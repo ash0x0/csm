@@ -441,16 +441,15 @@ func ReadRawEvents(filePath string) ([]map[string]any, error) {
 	defer f.Close()
 
 	var events []map[string]any
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 2*1024*1024), 2*1024*1024)
-	for sc.Scan() {
+	dec := json.NewDecoder(f)
+	for dec.More() {
 		var ev map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
+		if err := dec.Decode(&ev); err != nil {
 			continue
 		}
 		events = append(events, ev)
 	}
-	return events, sc.Err()
+	return events, nil
 }
 
 // ReadUserPrompts extracts user text from a session file, up to maxPrompts.

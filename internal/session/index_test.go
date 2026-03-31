@@ -360,3 +360,75 @@ func TestListProjects(t *testing.T) {
 		t.Error("missing /home/user/proj2")
 	}
 }
+
+func TestListOrphanedProjects(t *testing.T) {
+	claudeDir := testutil.CreateTempClaudeDir(t)
+
+	// Create a project whose path actually exists (the temp dir itself)
+	realPath := t.TempDir()
+	realDir := createProjectDir(t, claudeDir, realPath)
+	id1 := uuid.New().String()
+	testutil.WriteSession(t, realDir, id1, testutil.BuildSimpleSession(id1, "Real", "main", 1, "2026-03-20T10:00:00Z"))
+
+	// Create a project whose path does NOT exist
+	orphanDir := createProjectDir(t, claudeDir, "/nonexistent/fake/project")
+	id2 := uuid.New().String()
+	id3 := uuid.New().String()
+	testutil.WriteSession(t, orphanDir, id2, testutil.BuildSimpleSession(id2, "Orphan1", "main", 1, "2026-03-20T10:00:00Z"))
+	testutil.WriteSession(t, orphanDir, id3, testutil.BuildSimpleSession(id3, "Orphan2", "main", 1, "2026-03-20T11:00:00Z"))
+
+	orphans, err := ListOrphanedProjects(claudeDir)
+	if err != nil {
+		t.Fatalf("ListOrphanedProjects: %v", err)
+	}
+
+	if len(orphans) != 1 {
+		t.Fatalf("orphan count = %d, want 1", len(orphans))
+	}
+	if orphans[0].OriginalPath != "/nonexistent/fake/project" {
+		t.Errorf("path = %q, want %q", orphans[0].OriginalPath, "/nonexistent/fake/project")
+	}
+	if orphans[0].SessionCount != 2 {
+		t.Errorf("session count = %d, want 2", orphans[0].SessionCount)
+	}
+	if orphans[0].TotalSize == 0 {
+		t.Error("total size should be > 0")
+	}
+}
+
+func TestListOrphanedProjectsEmpty(t *testing.T) {
+	claudeDir := testutil.CreateTempClaudeDir(t)
+
+	// Create project whose path exists
+	realPath := t.TempDir()
+	realDir := createProjectDir(t, claudeDir, realPath)
+	id := uuid.New().String()
+	testutil.WriteSession(t, realDir, id, testutil.BuildSimpleSession(id, "S", "main", 1, "2026-03-20T10:00:00Z"))
+
+	orphans, err := ListOrphanedProjects(claudeDir)
+	if err != nil {
+		t.Fatalf("ListOrphanedProjects: %v", err)
+	}
+
+	if len(orphans) != 0 {
+		t.Errorf("orphan count = %d, want 0", len(orphans))
+	}
+}
+
+func TestListOrphanedProjectsSkipsObservers(t *testing.T) {
+	claudeDir := testutil.CreateTempClaudeDir(t)
+
+	// Create observer project with non-existent path
+	obsDir := createProjectDir(t, claudeDir, "/nonexistent/claude-mem-observer-data")
+	id := uuid.New().String()
+	testutil.WriteSession(t, obsDir, id, testutil.BuildSimpleSession(id, "Obs", "main", 1, "2026-03-20T10:00:00Z"))
+
+	orphans, err := ListOrphanedProjects(claudeDir)
+	if err != nil {
+		t.Fatalf("ListOrphanedProjects: %v", err)
+	}
+
+	if len(orphans) != 0 {
+		t.Errorf("orphan count = %d, want 0 (observer should be excluded)", len(orphans))
+	}
+}

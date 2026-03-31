@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -28,6 +29,7 @@ var (
 	listFzf        bool
 	listJSON       bool
 	listSort       string
+	listOrphaned   bool
 )
 
 func init() {
@@ -40,10 +42,15 @@ func init() {
 	listCmd.Flags().BoolVar(&listFzf, "fzf", false, "compact output for piping to fzf")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "JSON output")
 	listCmd.Flags().StringVar(&listSort, "sort", "modified", "sort by: modified, created, messages, size")
+	listCmd.Flags().BoolVarP(&listOrphaned, "orphaned", "O", false, "list projects whose paths no longer exist")
 	rootCmd.AddCommand(listCmd)
 }
 
 func runList(cmd *cobra.Command, args []string) error {
+	if listOrphaned {
+		return runListOrphaned()
+	}
+
 	scanner := session.NewScanner(claudeDir)
 
 	var since time.Duration
@@ -79,6 +86,32 @@ func runList(cmd *cobra.Command, args []string) error {
 	default:
 		format.PrintTable(sessions)
 	}
+	return nil
+}
+
+func runListOrphaned() error {
+	orphans, err := session.ListOrphanedProjects(claudeDir)
+	if err != nil {
+		return err
+	}
+
+	if len(orphans) == 0 {
+		fmt.Println("No orphaned projects found.")
+		return nil
+	}
+
+	if listJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(orphans)
+	}
+
+	fmt.Printf("%-50s  %8s  %10s\n", "PROJECT PATH", "SESSIONS", "SIZE")
+	fmt.Println(strings.Repeat("─", 74))
+	for _, o := range orphans {
+		fmt.Printf("%-50s  %8d  %10s\n", o.OriginalPath, o.SessionCount, format.FormatSize(o.TotalSize))
+	}
+	fmt.Printf("\n%d orphaned projects\n", len(orphans))
 	return nil
 }
 

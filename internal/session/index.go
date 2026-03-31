@@ -226,6 +226,88 @@ func ListProjects(claudeDir string) ([]string, error) {
 	return projects, nil
 }
 
+// OrphanedProject represents a project directory whose original path no longer exists.
+type OrphanedProject struct {
+	EncodedDir   string // directory name in ~/.claude/projects/
+	OriginalPath string // decoded filesystem path
+	SessionCount int    // number of .jsonl files
+	TotalSize    int64  // sum of .jsonl file sizes
+}
+
+// ListOrphanedProjects returns project directories whose original paths no longer exist on disk.
+// It extracts the real project path from the cwd field in session events, since the directory
+// name encoding is lossy (hyphens in paths become indistinguishable from path separators).
+func ListOrphanedProjects(claudeDir string) ([]OrphanedProject, error) {
+	projectsDir := filepath.Join(claudeDir, "projects")
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var orphans []OrphanedProject
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if strings.Contains(e.Name(), "claude-mem-observer") {
+			continue
+		}
+
+		dir := filepath.Join(projectsDir, e.Name())
+		jsonlFiles, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+		if len(jsonlFiles) == 0 {
+			continue
+		}
+
+		// Extract real path from cwd in the first JSONL file's events
+		realPath := extractCwd(jsonlFiles[0])
+		if realPath == "" {
+			realPath = decodeProjectPath(e.Name()) // fallback
+		}
+
+		if _, err := os.Stat(realPath); err == nil {
+			continue // path exists
+		}
+
+		var totalSize int64
+		for _, fp := range jsonlFiles {
+			if info, err := os.Stat(fp); err == nil {
+				totalSize += info.Size()
+			}
+		}
+
+		orphans = append(orphans, OrphanedProject{
+			EncodedDir:   e.Name(),
+			OriginalPath: realPath,
+			SessionCount: len(jsonlFiles),
+			TotalSize:    totalSize,
+		})
+	}
+	return orphans, nil
+}
+
+// extractCwd reads the first few events from a JSONL file and returns the cwd field.
+// This gives the authoritative project path, avoiding the lossy directory name decoding.
+func extractCwd(filePath string) string {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	for i := 0; i < 20 && dec.More(); i++ {
+		var ev map[string]any
+		if err := dec.Decode(&ev); err != nil {
+			continue
+		}
+		if cwd, ok := ev["cwd"].(string); ok && cwd != "" {
+			return cwd
+		}
+	}
+	return ""
+}
+
 // CleanOrphanedArtifacts finds and removes session-env and task dirs with no matching JSONL.
 func CleanOrphanedArtifacts(claudeDir string, dryRun bool) ([]string, error) {
 	// Build set of known session IDs from JSONL files
