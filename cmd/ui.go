@@ -169,6 +169,37 @@ func buildFzfLines(collapsedSet map[string]bool) []string {
 			}
 		}
 	}
+
+	// Append orphaned projects
+	orphans, _ := session.ListOrphanedProjects(claudeDir)
+	if len(orphans) > 0 {
+		lines = append(lines, fmt.Sprintf("%s── Orphaned Projects ──────────────────%s", dimColor, resetColor))
+
+		for _, o := range orphans {
+			// Scan sessions in the orphaned project dir
+			orphanSessions, _ := scanner.Scan(session.ScanOptions{ProjectFilter: o.OriginalPath})
+			if len(orphanSessions) == 0 {
+				continue
+			}
+
+			isCollapsed := collapsedSet[o.OriginalPath]
+			arrow := collapsed
+			if isCollapsed {
+				arrow = expanded
+			}
+
+			header := fmt.Sprintf("%s%s%s %s (%d)  \033[33m⚠ path not found%s",
+				dimColor, cyanColor, arrow, o.OriginalPath, len(orphanSessions), resetColor)
+			lines = append(lines, header)
+
+			if !isCollapsed {
+				for _, s := range orphanSessions {
+					lines = append(lines, formatSessionLine(s))
+				}
+			}
+		}
+	}
+
 	return lines
 }
 
@@ -275,9 +306,20 @@ func runUI(cmd *cobra.Command, args []string) error {
 				if err := doMove(ids[0]); err != nil {
 					fmt.Fprintf(os.Stderr, "move: %v\n", err)
 				}
-				continue // re-enter fzf
+				continue
 			}
 			return nil
+		case "ctrl-f":
+			if len(ids) == 2 {
+				if err := doDiff(ids[0], ids[1]); err != nil {
+					fmt.Fprintf(os.Stderr, "diff: %v\n", err)
+				}
+				fmt.Println("\nPress enter to continue...")
+				fmt.Scanln()
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "diff requires exactly 2 selected sessions\n")
+			continue
 		default:
 			return nil
 		}
@@ -294,14 +336,14 @@ func launchFzf() (action string, ids []string, err error) {
 	input := strings.Join(lines, "\n")
 	csmBin, _ := os.Executable()
 
-	header := "TAB select  ENTER merge  ctrl-d delete  ctrl-r rename  ctrl-o move  ctrl-g fold/unfold  ESC quit"
+	header := "TAB select  ENTER merge  ctrl-d delete  ctrl-r rename  ctrl-o move  ctrl-f diff  ctrl-g fold/unfold  ESC quit"
 
 	fzfCmd := exec.Command("fzf",
 		"--multi",
 		"--ansi",
 		"--no-sort",
 		"--layout=reverse",
-		"--expect", "enter,ctrl-o",
+		"--expect", "enter,ctrl-o,ctrl-f",
 		"--header", header,
 		"--prompt", "csm> ",
 		"--preview", csmBin+" show {1}",
@@ -393,5 +435,53 @@ func doMerge(ids []string) error {
 
 	fmt.Printf("Created merged session: %s\n", newID)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])
+	return nil
+}
+
+func doDiff(idA, idB string) error {
+	metaA, err := findSession(idA)
+	if err != nil {
+		return err
+	}
+	metaB, err := findSession(idB)
+	if err != nil {
+		return err
+	}
+
+	eventsA, err := session.ReadRawEvents(metaA.FilePath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", metaA.ShortID, err)
+	}
+	eventsB, err := session.ReadRawEvents(metaB.FilePath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", metaB.ShortID, err)
+	}
+
+	result := merge.Diff2(eventsA, eventsB)
+
+	fmt.Println()
+	switch result.Relationship {
+	case "identical":
+		fmt.Printf("  Both: %d events\n", result.CommonCount)
+		fmt.Printf("  Relationship: identical\n")
+	case "a-contains-b":
+		fmt.Printf("  %s: %d events (%s)\n", metaA.ShortID, result.CommonCount+result.OnlyACount, metaA.Title)
+		fmt.Printf("  %s: %d events (%s)\n", metaB.ShortID, result.CommonCount, metaB.Title)
+		fmt.Printf("  Relationship: A contains B (superset)\n")
+	case "b-contains-a":
+		fmt.Printf("  %s: %d events (%s)\n", metaA.ShortID, result.CommonCount, metaA.Title)
+		fmt.Printf("  %s: %d events (%s)\n", metaB.ShortID, result.CommonCount+result.OnlyBCount, metaB.Title)
+		fmt.Printf("  Relationship: B contains A (superset)\n")
+	case "diverged":
+		fmt.Printf("Sessions share %d events, then diverge.\n", result.CommonCount)
+		fmt.Printf("  %s: %d shared + %d unique (%s)\n", metaA.ShortID, result.CommonCount, result.OnlyACount, metaA.Title)
+		fmt.Printf("  %s: %d shared + %d unique (%s)\n", metaB.ShortID, result.CommonCount, result.OnlyBCount, metaB.Title)
+		fmt.Printf("  Relationship: diverged\n")
+	case "unrelated":
+		fmt.Printf("  %s: %d events (%s)\n", metaA.ShortID, result.CommonCount+result.OnlyACount, metaA.Title)
+		fmt.Printf("  %s: %d events (%s)\n", metaB.ShortID, result.CommonCount+result.OnlyBCount, metaB.Title)
+		fmt.Printf("  Relationship: unrelated (no shared history)\n")
+	}
+
 	return nil
 }

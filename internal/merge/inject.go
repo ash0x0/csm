@@ -18,11 +18,19 @@ type MergeOptions struct {
 	OutputDir string // project directory to write into
 }
 
-// MergeN creates a new session JSONL by concatenating all events from N sessions,
-// chaining them via parentUuid so Claude Code can resume with complete history.
+// MergeN creates a new session JSONL by git-style merging N sessions.
+// It finds common event prefixes (by UUID) and keeps shared history once,
+// merging only divergent tails. Falls back to concatenation when sessions
+// share no common prefix.
+//
+// Returns the new session ID and merge statistics.
 func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 	if len(metas) < 2 {
 		return "", fmt.Errorf("need at least 2 sessions to merge, got %d", len(metas))
+	}
+
+	if err := validateNoDuplicates(metas); err != nil {
+		return "", err
 	}
 
 	// Sort sessions chronologically by last Modified time (earliest first)
@@ -30,6 +38,30 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 		return metas[i].Modified.Before(metas[j].Modified)
 	})
 
+	// Load first session's events as the accumulator
+	accumulated, err := session.ReadRawEvents(metas[0].FilePath)
+	if err != nil {
+		return "", fmt.Errorf("reading session 1 (%s): %w", metas[0].ShortID, err)
+	}
+
+	var lastStats mergeStats
+
+	// Pairwise merge each subsequent session
+	for i := 1; i < len(metas); i++ {
+		next, err := session.ReadRawEvents(metas[i].FilePath)
+		if err != nil {
+			return "", fmt.Errorf("reading session %d (%s): %w", i+1, metas[i].ShortID, err)
+		}
+
+		merged, stats, err := merge2Events(accumulated, next)
+		if err != nil {
+			return "", fmt.Errorf("merging session %d (%s): %w", i+1, metas[i].ShortID, err)
+		}
+		accumulated = merged
+		lastStats = stats
+	}
+
+	// Generate new session ID and title
 	newID := uuid.New().String()
 
 	title := opts.Title
@@ -67,42 +99,32 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 		"sessionId": newID,
 	})
 
-	var lastUUID string // tracks the last uuid for chaining sessions
-
-	for i, meta := range metas {
-		events, err := session.ReadRawEvents(meta.FilePath)
-		if err != nil {
-			return "", fmt.Errorf("reading session %d (%s): %w", i+1, meta.ShortID, err)
+	// Write merged events, rewriting sessionId
+	for _, ev := range accumulated {
+		if _, has := ev["sessionId"]; has {
+			ev["sessionId"] = newID
 		}
-
-		firstLinked := false
-		for _, ev := range events {
-			// Rewrite sessionId on events that have it
-			// file-history-snapshot events have no sessionId — leave them alone
-			if _, has := ev["sessionId"]; has {
-				ev["sessionId"] = newID
-			}
-
-			// Chain: rewrite the first uuid-bearing event of S2+ to point to previous session's last uuid
-			if i > 0 && !firstLinked {
-				if _, hasUUID := ev["uuid"]; hasUUID {
-					ev["parentUuid"] = lastUUID
-					firstLinked = true
-				}
-			}
-
-			// Track the last uuid for chaining
-			if u, ok := ev["uuid"].(string); ok && u != "" {
-				lastUUID = u
-			}
-
-			if err := enc.Encode(ev); err != nil {
-				return "", fmt.Errorf("writing event: %w", err)
-			}
+		if err := enc.Encode(ev); err != nil {
+			return "", fmt.Errorf("writing event: %w", err)
 		}
 	}
 
+	// Print merge stats to stderr
+	fmt.Fprintf(os.Stderr, "Merge strategy: %s | shared: %d, branch-A: %d, branch-B: %d\n",
+		lastStats.Strategy, lastStats.CommonCount, lastStats.BranchAOnly, lastStats.BranchBOnly)
+
 	return newID, nil
+}
+
+func validateNoDuplicates(metas []*session.SessionMeta) error {
+	seen := make(map[string]bool)
+	for _, m := range metas {
+		if seen[m.ID] {
+			return fmt.Errorf("session %s appears more than once; cannot merge a session with itself", m.ShortID)
+		}
+		seen[m.ID] = true
+	}
+	return nil
 }
 
 func truncTitle(s string) string {

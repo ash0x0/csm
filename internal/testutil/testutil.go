@@ -200,6 +200,110 @@ func BuildSimpleSession(sessionID, title, branch string, turns int, baseTimestam
 	return events
 }
 
+// MakeUserMessageWithUUID creates a user message event with a predetermined UUID.
+func MakeUserMessageWithUUID(sessionID, parentUUID, uid, text, timestamp string) map[string]any {
+	return map[string]any{
+		"type":       "user",
+		"userType":   "external",
+		"entrypoint": "cli",
+		"message": map[string]any{
+			"role":    "user",
+			"content": text,
+		},
+		"timestamp":   timestamp,
+		"uuid":        uid,
+		"parentUuid":  parentUUID,
+		"sessionId":   sessionID,
+		"isSidechain": false,
+		"gitBranch":   "main",
+	}
+}
+
+// MakeAssistantWithUUID creates an assistant message event with a predetermined UUID.
+func MakeAssistantWithUUID(sessionID, parentUUID, uid, text, timestamp string) map[string]any {
+	return map[string]any{
+		"type": "assistant",
+		"message": map[string]any{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "text", "text": text},
+			},
+		},
+		"timestamp":   timestamp,
+		"uuid":        uid,
+		"parentUuid":  parentUUID,
+		"sessionId":   sessionID,
+		"isSidechain": false,
+	}
+}
+
+// MakeSystemInitWithUUID creates a system init event with a predetermined UUID.
+func MakeSystemInitWithUUID(sessionID, uid, timestamp string) map[string]any {
+	return map[string]any{
+		"type":        "system",
+		"subtype":     "init",
+		"content":     "",
+		"level":       "info",
+		"timestamp":   timestamp,
+		"uuid":        uid,
+		"sessionId":   sessionID,
+		"isSidechain": false,
+	}
+}
+
+// BuildForkedSessions creates two sessions that share a common prefix of events
+// (with identical UUIDs), then diverge with unique events. This simulates how
+// Claude Code creates forked sessions via /resume.
+//
+// Returns (eventsA, eventsB).
+func BuildForkedSessions(
+	sessionIDA, sessionIDB string,
+	titleA, titleB string,
+	sharedTurns, extraTurnsA, extraTurnsB int,
+	baseTimestamp string,
+) ([]map[string]any, []map[string]any) {
+	// Generate shared UUIDs for the common prefix
+	initUUID := uuid.New().String()
+
+	var sharedUUIDs []string // user+assistant uuid pairs
+	for i := 0; i < sharedTurns; i++ {
+		sharedUUIDs = append(sharedUUIDs, uuid.New().String()) // user
+		sharedUUIDs = append(sharedUUIDs, uuid.New().String()) // assistant
+	}
+
+	buildSession := func(sessionID, title string, extraTurns int) []map[string]any {
+		var events []map[string]any
+		events = append(events, MakeCustomTitle(sessionID, title))
+		events = append(events, MakeAgentName(sessionID, title))
+		events = append(events, MakeSystemInitWithUUID(sessionID, initUUID, baseTimestamp))
+
+		lastUUID := initUUID
+		for i := 0; i < sharedTurns; i++ {
+			userUUID := sharedUUIDs[i*2]
+			assistUUID := sharedUUIDs[i*2+1]
+			events = append(events, MakeUserMessageWithUUID(sessionID, lastUUID, userUUID, "shared prompt "+string(rune('A'+i)), baseTimestamp))
+			lastUUID = userUUID
+			events = append(events, MakeAssistantWithUUID(sessionID, lastUUID, assistUUID, "shared response "+string(rune('A'+i)), baseTimestamp))
+			lastUUID = assistUUID
+		}
+
+		// Divergent turns with fresh UUIDs
+		for i := 0; i < extraTurns; i++ {
+			userEv := MakeUserMessage(sessionID, lastUUID, title+" unique prompt "+string(rune('A'+i)), baseTimestamp)
+			events = append(events, userEv)
+			lastUUID = userEv["uuid"].(string)
+			assistEv := MakeAssistant(sessionID, lastUUID, title+" unique response "+string(rune('A'+i)), baseTimestamp)
+			events = append(events, assistEv)
+			lastUUID = assistEv["uuid"].(string)
+		}
+		return events
+	}
+
+	eventsA := buildSession(sessionIDA, titleA, extraTurnsA)
+	eventsB := buildSession(sessionIDB, titleB, extraTurnsB)
+	return eventsA, eventsB
+}
+
 func encodeProjectPath(path string) string {
 	if len(path) > 0 && path[0] == '/' {
 		path = path[1:]

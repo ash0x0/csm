@@ -190,29 +190,25 @@ func TestMergeNChronologicalOrder(t *testing.T) {
 
 	events := readBackRaw(t, projDir, newID)
 
-	// After the 2 header events (custom-title, agent-name), the earlier session's events should come first.
-	// Find the first custom-title event from the original sessions (not the header).
-	var foundTitles []string
+	// Verify that the earlier session's user events come before the later session's.
+	// Extract user event texts in order.
+	var userTexts []string
 	for _, ev := range events {
-		if ev["type"] == "custom-title" {
-			if ct, ok := ev["customTitle"].(string); ok {
-				foundTitles = append(foundTitles, ct)
+		if ev["type"] == "user" {
+			if msg, ok := ev["message"].(map[string]any); ok {
+				if content, ok := msg["content"].(string); ok {
+					userTexts = append(userTexts, content)
+				}
 			}
 		}
 	}
 
-	// First title is the merged header title, then earlier, then later
-	if len(foundTitles) < 3 {
-		t.Fatalf("expected at least 3 custom-title events, got %d: %v", len(foundTitles), foundTitles)
+	if len(userTexts) < 2 {
+		t.Fatalf("expected at least 2 user events, got %d", len(userTexts))
 	}
-	if foundTitles[0] != "Chrono Test" {
-		t.Errorf("first title = %q, want %q", foundTitles[0], "Chrono Test")
-	}
-	if foundTitles[1] != "Earlier Session" {
-		t.Errorf("second title = %q, want %q (earlier session should come first)", foundTitles[1], "Earlier Session")
-	}
-	if foundTitles[2] != "Later Session" {
-		t.Errorf("third title = %q, want %q", foundTitles[2], "Later Session")
+	// Earlier session's events should come first (concat fallback preserves chronological order)
+	if userTexts[0] != "user prompt A" {
+		t.Errorf("first user text = %q, want %q", userTexts[0], "user prompt A")
 	}
 }
 
