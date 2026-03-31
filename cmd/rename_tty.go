@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ash0x0/csm/internal/session"
@@ -50,6 +51,7 @@ func runRenameTty(cmd *cobra.Command, args []string) error {
 	}
 
 	os.Remove(claudeDir + "/csm-cache.json")
+	MarkDirty(filepath.Dir(meta.FilePath))
 	fmt.Printf("Renamed → %s\n", newTitle)
 	return nil
 }

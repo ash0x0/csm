@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,6 +75,7 @@ func runRm(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "Error deleting %s: %v\n", meta.ShortID, err)
 				continue
 			}
+			MarkDirty(filepath.Dir(meta.FilePath))
 			fmt.Printf("Deleted %s: %s\n", meta.ShortID, strings.Join(deleted, ", "))
 		}
 		return nil
@@ -142,6 +144,7 @@ func runRm(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "Error deleting %s: %v\n", s.ShortID, err)
 			continue
 		}
+		MarkDirty(filepath.Dir(s.FilePath))
 		deleted++
 	}
 	fmt.Printf("Deleted %d sessions.\n", deleted)

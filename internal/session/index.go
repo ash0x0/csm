@@ -7,7 +7,9 @@ import (
 	"strings"
 )
 
-// RenameSession appends a custom-title event to rename a session.
+// RenameSession appends custom-title and agent-name events to rename a session.
+// custom-title controls the session title in listings and /resume picker.
+// agent-name controls the green label in Claude Code's input box.
 func RenameSession(meta *SessionMeta, newTitle string) error {
 	f, err := os.OpenFile(meta.FilePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
@@ -15,17 +17,17 @@ func RenameSession(meta *SessionMeta, newTitle string) error {
 	}
 	defer f.Close()
 
-	ev := map[string]any{
+	enc := json.NewEncoder(f)
+	enc.Encode(map[string]any{
 		"type":        "custom-title",
 		"customTitle": newTitle,
 		"sessionId":   meta.ID,
-	}
-	data, err := json.Marshal(ev)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(data, '\n'))
-	return err
+	})
+	return enc.Encode(map[string]any{
+		"type":      "agent-name",
+		"agentName": newTitle,
+		"sessionId": meta.ID,
+	})
 }
 
 // RebuildIndex rebuilds sessions-index.json for a project directory.

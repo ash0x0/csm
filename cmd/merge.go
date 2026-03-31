@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -80,6 +81,13 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
+
+	// Mark the output project dir dirty (defaults to first session's project)
+	outputDir := filepath.Dir(metas[0].FilePath)
+	if mergeProject != "" {
+		outputDir = mergeProject
+	}
+	MarkDirty(outputDir)
 
 	fmt.Printf("Created merged session: %s\n", newID)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ash0x0/csm/internal/session"
@@ -46,8 +47,8 @@ func runRename(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("rename failed: %w", err)
 	}
 
-	// Invalidate cache for this file
 	os.Remove(claudeDir + "/csm-cache.json")
+	MarkDirty(filepath.Dir(meta.FilePath))
 
 	fmt.Printf("Renamed %s → %s\n", meta.ShortID, newTitle)
 	return nil

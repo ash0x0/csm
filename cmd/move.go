@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ash0x0/csm/internal/session"
@@ -49,8 +50,10 @@ func runMove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("move failed: %w", err)
 	}
 
+	MarkDirty(filepath.Dir(meta.FilePath))
+	MarkDirty(filepath.Dir(newPath))
+
 	fmt.Printf("Moved %s (%s)\n  from: %s\n  to:   %s\n", meta.ShortID, meta.Title, meta.Project, destProject)
-	_ = newPath
 	return nil
 }
 

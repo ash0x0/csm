@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -354,11 +355,13 @@ func doMove(id string) error {
 		return nil
 	}
 
-	_, err = session.MoveSession(claudeDir, meta, dest)
+	newPath, err := session.MoveSession(claudeDir, meta, dest)
 	if err != nil {
 		return err
 	}
 
+	MarkDirty(filepath.Dir(meta.FilePath))
+	MarkDirty(filepath.Dir(newPath))
 	fmt.Printf("Moved %s (%s) → %s\n", meta.ShortID, meta.Title, dest)
 	return nil
 }
@@ -385,6 +388,8 @@ func doMerge(ids []string) error {
 	if err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
+
+	MarkDirty(filepath.Dir(metas[0].FilePath))
 
 	fmt.Printf("Created merged session: %s\n", newID)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])

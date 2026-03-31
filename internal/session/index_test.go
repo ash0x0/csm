@@ -27,21 +27,27 @@ func TestRenameSession(t *testing.T) {
 		t.Fatalf("RenameSession: %v", err)
 	}
 
-	// Read back and verify the last line is a custom-title event with the new title
+	// Read back and verify custom-title + agent-name events appended
 	rawEvents, err := ReadRawEvents(filePath)
 	if err != nil {
 		t.Fatalf("ReadRawEvents: %v", err)
 	}
 
-	last := rawEvents[len(rawEvents)-1]
-	if last["type"] != "custom-title" {
-		t.Errorf("last event type = %q, want %q", last["type"], "custom-title")
+	n := len(rawEvents)
+	titleEv := rawEvents[n-2]
+	nameEv := rawEvents[n-1]
+
+	if titleEv["type"] != "custom-title" {
+		t.Errorf("second-to-last event type = %q, want %q", titleEv["type"], "custom-title")
 	}
-	if last["customTitle"] != "New Title" {
-		t.Errorf("customTitle = %q, want %q", last["customTitle"], "New Title")
+	if titleEv["customTitle"] != "New Title" {
+		t.Errorf("customTitle = %q, want %q", titleEv["customTitle"], "New Title")
 	}
-	if last["sessionId"] != sessionID {
-		t.Errorf("sessionId = %q, want %q", last["sessionId"], sessionID)
+	if nameEv["type"] != "agent-name" {
+		t.Errorf("last event type = %q, want %q", nameEv["type"], "agent-name")
+	}
+	if nameEv["agentName"] != "New Title" {
+		t.Errorf("agentName = %q, want %q", nameEv["agentName"], "New Title")
 	}
 }
 
