@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ const (
 	cacheVersion  = 1
 	headLines     = 50
 	tailLines     = 20
-	observerToken = "claude-mem-observer"
+	ObserverToken = "claude-mem-observer"
 )
 
 // ScanOptions controls which sessions to include.
@@ -90,7 +91,7 @@ func (s *Scanner) Scan(opts ScanOptions) ([]SessionMeta, error) {
 		}
 		projName := pe.Name()
 
-		if !opts.IncludeObservers && strings.Contains(projName, observerToken) {
+		if !opts.IncludeObservers && strings.Contains(projName, ObserverToken) {
 			continue
 		}
 		if opts.ProjectFilter != "" && !strings.Contains(decodeProjectPath(projName), opts.ProjectFilter) {
@@ -266,6 +267,9 @@ func (s *Scanner) processLine(line []byte, meta *SessionMeta, firstTs, lastTs *s
 	if ev.GitBranch != "" && meta.Branch == "" {
 		meta.Branch = ev.GitBranch
 	}
+	if ev.Slug != "" && meta.Slug == "" {
+		meta.Slug = ev.Slug
+	}
 	if ev.Timestamp != "" {
 		if *firstTs == "" {
 			*firstTs = ev.Timestamp
@@ -368,20 +372,7 @@ func containsBytes(haystack []byte, needle string) bool {
 }
 
 func findBytes(haystack []byte, needle string) int {
-	n := []byte(needle)
-	for i := 0; i <= len(haystack)-len(n); i++ {
-		found := true
-		for j := 0; j < len(n); j++ {
-			if haystack[i+j] != n[j] {
-				found = false
-				break
-			}
-		}
-		if found {
-			return i
-		}
-	}
-	return -1
+	return bytes.Index(haystack, []byte(needle))
 }
 
 // DecodeProjectPath converts encoded dir name to filesystem path.
@@ -724,4 +715,211 @@ func ReadSessionEvents(filePath string, head, tail int) (headEvents, tailEvents 
 	}
 
 	return headEvents, tailEvents, totalLines, nil
+}
+
+// ReadFilesModified extracts file modification info from file-history-snapshot events.
+func ReadFilesModified(filePath string) ([]FileModification, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	fileMap := make(map[string]*FileModification)
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var ev map[string]any
+		if dec.Decode(&ev) != nil {
+			continue
+		}
+		if ev["type"] != "file-history-snapshot" {
+			continue
+		}
+		snap, ok := ev["snapshot"].(map[string]any)
+		if !ok {
+			continue
+		}
+		backups, ok := snap["trackedFileBackups"].(map[string]any)
+		if !ok {
+			continue
+		}
+		for path, info := range backups {
+			entry, ok := info.(map[string]any)
+			if !ok {
+				continue
+			}
+			ver := 0
+			if v, ok := entry["version"].(float64); ok {
+				ver = int(v)
+			}
+			var bt time.Time
+			if ts, ok := entry["backupTime"].(string); ok {
+				bt, _ = time.Parse(time.RFC3339Nano, ts)
+			}
+
+			existing, found := fileMap[path]
+			if !found || ver > existing.Versions {
+				fileMap[path] = &FileModification{Path: path, Versions: ver, LastBackup: bt}
+			} else if bt.After(existing.LastBackup) {
+				existing.LastBackup = bt
+			}
+		}
+	}
+
+	result := make([]FileModification, 0, len(fileMap))
+	for _, fm := range fileMap {
+		result = append(result, *fm)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].LastBackup.After(result[j].LastBackup)
+	})
+	return result, nil
+}
+
+// ReadTimeline extracts notable events from a session for timeline display.
+func ReadTimeline(filePath string) ([]TimelineEvent, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []TimelineEvent
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var ev map[string]any
+		if dec.Decode(&ev) != nil {
+			continue
+		}
+
+		typ, _ := ev["type"].(string)
+		ts, _ := ev["timestamp"].(string)
+		t, _ := time.Parse(time.RFC3339Nano, ts)
+
+		switch typ {
+		case "user":
+			// Only real user prompts (not tool results, not meta)
+			if ev["isMeta"] == true {
+				continue
+			}
+			msg, ok := ev["message"].(map[string]any)
+			if !ok {
+				continue
+			}
+			content, ok := msg["content"].(string)
+			if !ok {
+				continue // tool_result blocks are []any, not string
+			}
+			summary := content
+			if len(summary) > 80 {
+				summary = summary[:77] + "..."
+			}
+			events = append(events, TimelineEvent{Time: t, Type: "user", Summary: summary})
+
+		case "assistant":
+			msg, ok := ev["message"].(map[string]any)
+			if !ok {
+				continue
+			}
+			// Only show end-of-turn assistant messages, not mid-turn tool_use chunks
+			sr, _ := msg["stop_reason"].(string)
+			if sr != "end_turn" {
+				continue
+			}
+			tokensOut := 0
+			if usage, ok := msg["usage"].(map[string]any); ok {
+				if ot, ok := usage["output_tokens"].(float64); ok {
+					tokensOut = int(ot)
+				}
+			}
+			events = append(events, TimelineEvent{Time: t, Type: "assistant", TokensOut: tokensOut})
+
+		case "system":
+			sub, _ := ev["subtype"].(string)
+			switch sub {
+			case "turn_duration":
+				dur, _ := ev["durationMs"].(float64)
+				events = append(events, TimelineEvent{Time: t, Type: "turn-duration", DurationMs: int64(dur)})
+			case "compact_boundary":
+				trigger := ""
+				preTokens := 0
+				if meta, ok := ev["compactMetadata"].(map[string]any); ok {
+					trigger, _ = meta["trigger"].(string)
+					if pt, ok := meta["preTokens"].(float64); ok {
+						preTokens = int(pt)
+					}
+				}
+				events = append(events, TimelineEvent{Time: t, Type: "compact", Trigger: trigger, PreTokens: preTokens})
+			}
+
+		case "queue-operation":
+			content, _ := ev["content"].(string)
+			if len(content) > 60 {
+				content = content[:57] + "..."
+			}
+			events = append(events, TimelineEvent{Time: t, Type: "queue", Summary: content})
+		}
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].Time.Before(events[j].Time)
+	})
+	return events, nil
+}
+
+// SearchSession searches a session JSONL for a query string.
+func SearchSession(filePath, query string, deep bool) ([]SearchHit, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	lowerQuery := strings.ToLower(query)
+	var hits []SearchHit
+	lastPromptFound := false
+
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var ev map[string]any
+		if dec.Decode(&ev) != nil {
+			continue
+		}
+
+		typ, _ := ev["type"].(string)
+
+		if typ == "last-prompt" && !lastPromptFound {
+			lp, _ := ev["lastPrompt"].(string)
+			if lp != "" && strings.Contains(strings.ToLower(lp), lowerQuery) {
+				ctx := lp
+				if len(ctx) > 120 {
+					ctx = ctx[:117] + "..."
+				}
+				hits = append(hits, SearchHit{Context: ctx, Type: "last-prompt"})
+				lastPromptFound = true
+			}
+		}
+
+		if deep && typ == "user" {
+			if ev["isMeta"] == true {
+				continue
+			}
+			msg, ok := ev["message"].(map[string]any)
+			if !ok {
+				continue
+			}
+			content, ok := msg["content"].(string)
+			if !ok {
+				continue
+			}
+			if strings.Contains(strings.ToLower(content), lowerQuery) {
+				ctx := content
+				if len(ctx) > 120 {
+					ctx = ctx[:117] + "..."
+				}
+				hits = append(hits, SearchHit{Context: ctx, Type: "user-prompt"})
+			}
+		}
+	}
+	return hits, nil
 }

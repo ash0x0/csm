@@ -15,6 +15,7 @@ type SessionMeta struct {
 	FileSize int64     `json:"file_size"`
 	FilePath string    `json:"file_path"`
 	IsActive bool      `json:"is_active"`
+	Slug     string    `json:"slug,omitempty"`
 }
 
 // ContentBlock represents a message content block (text, tool_use, tool_result, thinking).
@@ -47,6 +48,9 @@ type Event struct {
 	// user/assistant events — message can be dict or raw
 	Message any `json:"message,omitempty"`
 
+	// session slug (human-readable name)
+	Slug string `json:"slug,omitempty"`
+
 	// system events
 	Subtype string `json:"subtype,omitempty"`
 	Content any    `json:"content,omitempty"`
@@ -72,6 +76,41 @@ type IndexEntry struct {
 	GitBranch   string `json:"gitBranch"`
 	ProjectPath string `json:"projectPath"`
 	IsSidechain bool   `json:"isSidechain"`
+}
+
+// Task represents a Claude Code task from ~/.claude/tasks/<session-id>/.
+type Task struct {
+	ID          string   `json:"id"`
+	Subject     string   `json:"subject"`
+	Description string   `json:"description"`
+	ActiveForm  string   `json:"activeForm"`
+	Status      string   `json:"status"` // "pending", "in_progress", "completed"
+	Blocks      []string `json:"blocks"`
+	BlockedBy   []string `json:"blockedBy"`
+}
+
+// FileModification represents a file touched during a session.
+type FileModification struct {
+	Path       string    `json:"path"`
+	Versions   int       `json:"versions"`
+	LastBackup time.Time `json:"last_backup"`
+}
+
+// TimelineEvent represents a notable event in a session's timeline.
+type TimelineEvent struct {
+	Time       time.Time `json:"time"`
+	Type       string    `json:"type"` // "user", "assistant", "compact", "queue", "turn-duration"
+	Summary    string    `json:"summary"`
+	DurationMs int64     `json:"duration_ms,omitempty"`
+	TokensOut  int       `json:"tokens_out,omitempty"`
+	PreTokens  int       `json:"pre_tokens,omitempty"`
+	Trigger    string    `json:"trigger,omitempty"`
+}
+
+// SearchHit represents a search match within a session.
+type SearchHit struct {
+	Context string `json:"context"` // matched line, truncated
+	Type    string `json:"type"`    // "title", "last-prompt", "user-prompt"
 }
 
 // CacheFile holds all cached session metadata.
