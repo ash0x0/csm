@@ -102,11 +102,17 @@ func findCommonPrefix(eventsA, eventsB []map[string]any) int {
 	return 0
 }
 
-// rechainEvents rewrites parentUuid on each uuid-bearing event to form a
-// linear chain starting from anchorUUID. Returns the last uuid in the chain.
+// rechainEvents rewrites parentUuid on conversation events (user, assistant,
+// system) to form a linear chain starting from anchorUUID. Progress and
+// queue-operation events form parallel sub-chains and are left untouched —
+// linearizing them would destroy the conversation tree that Claude Code walks.
 func rechainEvents(events []map[string]any, anchorUUID string) string {
 	last := anchorUUID
 	for _, ev := range events {
+		typ, _ := ev["type"].(string)
+		if typ != "user" && typ != "assistant" && typ != "system" {
+			continue
+		}
 		if u, ok := ev["uuid"].(string); ok && u != "" {
 			ev["parentUuid"] = last
 			last = u
@@ -116,25 +122,36 @@ func rechainEvents(events []map[string]any, anchorUUID string) string {
 }
 
 // deduplicateMetadata merges metadata events from two sessions.
-// For custom-title/agent-name: discards all (the caller writes fresh headers).
-// For file-history-snapshot: deduplicates by messageId.
+// - custom-title/agent-name: discarded (caller writes fresh headers)
+// - file-history-snapshot: deduplicated by messageId
+// - queue-operation: dropped (per-session runtime state, meaningless after merge)
+// - last-prompt: only the last one is kept
 func deduplicateMetadata(metaA, metaB []map[string]any) []map[string]any {
 	seen := make(map[string]bool)
 	var out []map[string]any
+	var lastPromptEvent map[string]any
 
 	add := func(events []map[string]any) {
 		for _, ev := range events {
 			typ, _ := ev["type"].(string)
-			// Skip title/agent-name — caller writes fresh headers
 			if typ == "custom-title" || typ == "agent-name" {
+				continue
+			}
+			if typ == "queue-operation" {
+				continue
+			}
+			if typ == "last-prompt" {
+				lastPromptEvent = ev
 				continue
 			}
 			if typ == "file-history-snapshot" {
 				mid, _ := ev["messageId"].(string)
-				if mid != "" && seen[mid] {
-					continue
+				if mid != "" {
+					if seen[mid] {
+						continue
+					}
+					seen[mid] = true
 				}
-				seen[mid] = true
 			}
 			out = append(out, ev)
 		}
@@ -142,6 +159,9 @@ func deduplicateMetadata(metaA, metaB []map[string]any) []map[string]any {
 
 	add(metaA)
 	add(metaB)
+	if lastPromptEvent != nil {
+		out = append(out, lastPromptEvent)
+	}
 	return out
 }
 
@@ -223,6 +243,7 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 		stats.BranchBOnly = onlyB
 		dedupMeta := deduplicateMetadata(metaA, metaB)
 		result := append(dedupMeta, uuidB...)
+		rechainEvents(result, "")
 		return result, stats, nil
 	}
 	if a.Length == len(uuidB) && len(uuidA) > a.Length {
@@ -230,6 +251,7 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 		stats.BranchAOnly = onlyA
 		dedupMeta := deduplicateMetadata(metaA, metaB)
 		result := append(dedupMeta, uuidA...)
+		rechainEvents(result, "")
 		return result, stats, nil
 	}
 
@@ -242,14 +264,12 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 		all := make([]map[string]any, 0, len(dedupMeta)+len(uuidA)+len(uuidB))
 		all = append(all, dedupMeta...)
 		all = append(all, uuidA...)
-		lastUUID := ""
-		if len(uuidA) > 0 {
-			lastUUID, _ = uuidA[len(uuidA)-1]["uuid"].(string)
-		}
-		if lastUUID != "" && len(uuidB) > 0 {
-			uuidB[0]["parentUuid"] = lastUUID
-		}
 		all = append(all, uuidB...)
+		// Rechain ALL uuid events linearly so Claude Code can walk the
+		// entire conversation from last event to first. Sessions may have
+		// internal branching (tree-shaped parentUuid) which would leave
+		// earlier events unreachable if not linearized.
+		rechainEvents(all, "")
 		return all, stats, nil
 	}
 
@@ -260,7 +280,6 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 
 	// The shared block from A (identical to the corresponding block in B)
 	sharedBlock := uuidA[a.OffsetA : a.OffsetA+a.Length]
-	lastSharedUUID, _ := sharedBlock[len(sharedBlock)-1]["uuid"].(string)
 
 	// Collect unique events from both sessions (before and after the shared block)
 	var divergent []map[string]any
@@ -273,14 +292,16 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 		return parseTimestamp(divergent[i]).Before(parseTimestamp(divergent[j]))
 	})
 
-	rechainEvents(divergent, lastSharedUUID)
-
 	dedupMeta := deduplicateMetadata(metaA, metaB)
 
 	result := make([]map[string]any, 0, len(dedupMeta)+len(sharedBlock)+len(divergent))
 	result = append(result, dedupMeta...)
 	result = append(result, sharedBlock...)
 	result = append(result, divergent...)
+
+	// Rechain ALL uuid events linearly so Claude Code can walk the
+	// entire conversation from last event to first.
+	rechainEvents(result, "")
 
 	return result, stats, nil
 }

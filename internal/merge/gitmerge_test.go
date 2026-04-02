@@ -61,9 +61,9 @@ func TestSplitEvents(t *testing.T) {
 
 func TestRechainEvents(t *testing.T) {
 	events := []map[string]any{
-		{"uuid": "a", "parentUuid": "old1"},
-		{"uuid": "b", "parentUuid": "old2"},
-		{"uuid": "c", "parentUuid": "old3"},
+		{"type": "system", "uuid": "a", "parentUuid": "old1"},
+		{"type": "user", "uuid": "b", "parentUuid": "old2"},
+		{"type": "assistant", "uuid": "c", "parentUuid": "old3"},
 	}
 
 	last := rechainEvents(events, "anchor")
@@ -79,6 +79,36 @@ func TestRechainEvents(t *testing.T) {
 	}
 	if events[2]["parentUuid"] != "b" {
 		t.Errorf("event 2 parentUuid = %q, want %q", events[2]["parentUuid"], "b")
+	}
+}
+
+func TestRechainEventsSkipsProgress(t *testing.T) {
+	events := []map[string]any{
+		{"type": "user", "uuid": "u1", "parentUuid": "old"},
+		{"type": "progress", "uuid": "p1", "parentUuid": "old"},
+		{"type": "progress", "uuid": "p2", "parentUuid": "p1"},
+		{"type": "assistant", "uuid": "a1", "parentUuid": "old"},
+	}
+
+	last := rechainEvents(events, "anchor")
+
+	if last != "a1" {
+		t.Errorf("last uuid = %q, want %q", last, "a1")
+	}
+	// user should chain from anchor
+	if events[0]["parentUuid"] != "anchor" {
+		t.Errorf("user parentUuid = %q, want %q", events[0]["parentUuid"], "anchor")
+	}
+	// progress events should be untouched
+	if events[1]["parentUuid"] != "old" {
+		t.Errorf("progress1 parentUuid = %q, want %q (untouched)", events[1]["parentUuid"], "old")
+	}
+	if events[2]["parentUuid"] != "p1" {
+		t.Errorf("progress2 parentUuid = %q, want %q (untouched)", events[2]["parentUuid"], "p1")
+	}
+	// assistant should chain from user
+	if events[3]["parentUuid"] != "u1" {
+		t.Errorf("assistant parentUuid = %q, want %q", events[3]["parentUuid"], "u1")
 	}
 }
 

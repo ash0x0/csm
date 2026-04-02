@@ -44,9 +44,9 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 		return "", fmt.Errorf("reading session 1 (%s): %w", metas[0].ShortID, err)
 	}
 
-	var lastStats mergeStats
+	// Accumulate stats across pairwise merges
+	totalStats := mergeStats{}
 
-	// Pairwise merge each subsequent session
 	for i := 1; i < len(metas); i++ {
 		next, err := session.ReadRawEvents(metas[i].FilePath)
 		if err != nil {
@@ -58,7 +58,10 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 			return "", fmt.Errorf("merging session %d (%s): %w", i+1, metas[i].ShortID, err)
 		}
 		accumulated = merged
-		lastStats = stats
+		totalStats.CommonCount += stats.CommonCount
+		totalStats.BranchAOnly += stats.BranchAOnly
+		totalStats.BranchBOnly += stats.BranchBOnly
+		totalStats.Strategy = stats.Strategy // last strategy wins for display
 	}
 
 	// Generate new session ID and title
@@ -79,11 +82,20 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 	}
 	outputPath := filepath.Join(outputDir, newID+".jsonl")
 
-	f, err := os.Create(outputPath)
+	// Atomic write: write to temp file, rename on success
+	tmpPath := outputPath + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+
+	succeeded := false
+	defer func() {
+		f.Close()
+		if !succeeded {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	enc := json.NewEncoder(f)
 
@@ -109,9 +121,18 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 		}
 	}
 
+	// Flush and rename
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmpPath, outputPath); err != nil {
+		return "", err
+	}
+	succeeded = true
+
 	// Print merge stats to stderr
 	fmt.Fprintf(os.Stderr, "Merge strategy: %s | shared: %d, branch-A: %d, branch-B: %d\n",
-		lastStats.Strategy, lastStats.CommonCount, lastStats.BranchAOnly, lastStats.BranchBOnly)
+		totalStats.Strategy, totalStats.CommonCount, totalStats.BranchAOnly, totalStats.BranchBOnly)
 
 	return newID, nil
 }
