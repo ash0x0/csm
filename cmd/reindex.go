@@ -36,7 +36,7 @@ func runReindex(cmd *cobra.Command, args []string) error {
 		if !e.IsDir() {
 			continue
 		}
-		if strings.Contains(e.Name(), "claude-mem-observer") {
+		if strings.Contains(e.Name(), session.ObserverToken) {
 			continue
 		}
 		if reindexProject != "" && !strings.Contains(e.Name(), reindexProject) {

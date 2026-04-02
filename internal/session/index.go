@@ -7,29 +7,6 @@ import (
 	"strings"
 )
 
-// RenameSession appends custom-title and agent-name events to rename a session.
-// custom-title controls the session title in listings and /resume picker.
-// agent-name controls the green label in Claude Code's input box.
-func RenameSession(meta *SessionMeta, newTitle string) error {
-	f, err := os.OpenFile(meta.FilePath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	enc.Encode(map[string]any{
-		"type":        "custom-title",
-		"customTitle": newTitle,
-		"sessionId":   meta.ID,
-	})
-	return enc.Encode(map[string]any{
-		"type":      "agent-name",
-		"agentName": newTitle,
-		"sessionId": meta.ID,
-	})
-}
-
 // RebuildIndex rebuilds sessions-index.json for a project directory.
 func RebuildIndex(projDir string) (int, error) {
 	jsonlFiles, err := filepath.Glob(filepath.Join(projDir, "*.jsonl"))
@@ -214,7 +191,7 @@ func ListProjects(claudeDir string) ([]string, error) {
 		if !e.IsDir() {
 			continue
 		}
-		if strings.Contains(e.Name(), "claude-mem-observer") {
+		if strings.Contains(e.Name(), ObserverToken) {
 			continue
 		}
 		// Check it has JSONL files
@@ -249,7 +226,7 @@ func ListOrphanedProjects(claudeDir string) ([]OrphanedProject, error) {
 		if !e.IsDir() {
 			continue
 		}
-		if strings.Contains(e.Name(), "claude-mem-observer") {
+		if strings.Contains(e.Name(), ObserverToken) {
 			continue
 		}
 

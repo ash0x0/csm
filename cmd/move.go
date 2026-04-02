@@ -76,10 +76,14 @@ func pickProject(currentProject string) (string, error) {
 		lines = append(lines, marker+p)
 	}
 
+	csmBin, _ := os.Executable()
 	fzfCmd := exec.Command("fzf",
-		"--header", "Select destination project (* = current)",
+		"--print-query",
+		"--header", "Select project or type a path (ESC to cancel)  (* = current)",
 		"--prompt", "move to> ",
 		"--layout=reverse",
+		"--bind", "enter:accept-or-print-query",
+		"--bind", fmt.Sprintf("change:reload(%s _list-dirs {q} 2>/dev/null || true)", csmBin),
 	)
 	fzfCmd.Stdin = strings.NewReader(strings.Join(lines, "\n"))
 	fzfCmd.Stderr = os.Stderr
@@ -89,9 +93,32 @@ func pickProject(currentProject string) (string, error) {
 		return "", fmt.Errorf("cancelled")
 	}
 
-	line := strings.TrimSpace(string(out))
-	// Strip marker prefix
-	line = strings.TrimPrefix(line, "* ")
-	line = strings.TrimPrefix(line, "  ")
-	return line, nil
+	// --print-query outputs: line 1 = query, line 2 = selected item (if any)
+	outputLines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var result string
+	if len(outputLines) >= 2 && outputLines[1] != "" {
+		result = outputLines[1] // user selected from list
+	} else {
+		result = outputLines[0] // user typed a path
+	}
+
+	result = strings.TrimSpace(result)
+	result = strings.TrimPrefix(result, "* ")
+	result = strings.TrimPrefix(result, "  ")
+
+	// Expand ~
+	if strings.HasPrefix(result, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot expand home directory: %w", err)
+		}
+		result = home + result[1:]
+	}
+
+	// Validate path exists
+	if _, err := os.Stat(result); err != nil {
+		return "", fmt.Errorf("path does not exist: %s", result)
+	}
+
+	return result, nil
 }

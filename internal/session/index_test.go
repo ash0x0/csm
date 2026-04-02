@@ -10,47 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestRenameSession(t *testing.T) {
-	claudeDir := testutil.CreateTempClaudeDir(t)
-	projDir := createProjectDir(t, claudeDir, "/home/user/myproject")
-	sessionID := uuid.New().String()
-
-	events := testutil.BuildSimpleSession(sessionID, "Original Title", "main", 1, "2026-03-20T10:00:00Z")
-	filePath := testutil.WriteSession(t, projDir, sessionID, events)
-
-	meta := &SessionMeta{
-		ID:       sessionID,
-		FilePath: filePath,
-	}
-
-	if err := RenameSession(meta, "New Title"); err != nil {
-		t.Fatalf("RenameSession: %v", err)
-	}
-
-	// Read back and verify custom-title + agent-name events appended
-	rawEvents, err := ReadRawEvents(filePath)
-	if err != nil {
-		t.Fatalf("ReadRawEvents: %v", err)
-	}
-
-	n := len(rawEvents)
-	titleEv := rawEvents[n-2]
-	nameEv := rawEvents[n-1]
-
-	if titleEv["type"] != "custom-title" {
-		t.Errorf("second-to-last event type = %q, want %q", titleEv["type"], "custom-title")
-	}
-	if titleEv["customTitle"] != "New Title" {
-		t.Errorf("customTitle = %q, want %q", titleEv["customTitle"], "New Title")
-	}
-	if nameEv["type"] != "agent-name" {
-		t.Errorf("last event type = %q, want %q", nameEv["type"], "agent-name")
-	}
-	if nameEv["agentName"] != "New Title" {
-		t.Errorf("agentName = %q, want %q", nameEv["agentName"], "New Title")
-	}
-}
-
 func TestRebuildIndex(t *testing.T) {
 	claudeDir := testutil.CreateTempClaudeDir(t)
 	projDir := createProjectDir(t, claudeDir, "/home/user/myproject")

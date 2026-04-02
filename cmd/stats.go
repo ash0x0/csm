@@ -37,7 +37,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		projPath := filepath.Join(projectsDir, pe.Name())
 		projName := session.DecodeProjectPath(pe.Name())
 
-		isObserver := strings.Contains(pe.Name(), "claude-mem-observer")
+		isObserver := strings.Contains(pe.Name(), session.ObserverToken)
 
 		// Count top-level JSONL files
 		jsonlFiles, _ := filepath.Glob(filepath.Join(projPath, "*.jsonl"))

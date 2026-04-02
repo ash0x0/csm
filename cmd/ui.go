@@ -37,10 +37,53 @@ var toggleGroupCmd = &cobra.Command{
 	RunE:   runToggleGroup,
 }
 
+var listDirsCmd = &cobra.Command{
+	Use:    "_list-dirs <prefix>",
+	Hidden: true,
+	Args:   cobra.ExactArgs(1),
+	RunE:   runListDirs,
+}
+
 func init() {
 	rootCmd.AddCommand(fzfLinesCmd)
 	rootCmd.AddCommand(toggleGroupCmd)
+	rootCmd.AddCommand(listDirsCmd)
 	rootCmd.RunE = runUI
+}
+
+func runListDirs(cmd *cobra.Command, args []string) error {
+	prefix := args[0]
+	if strings.HasPrefix(prefix, "~") {
+		home, _ := os.UserHomeDir()
+		prefix = home + prefix[1:]
+	}
+
+	// List directories under the parent of the prefix
+	dir := prefix
+	base := ""
+	if info, err := os.Stat(prefix); err != nil || !info.IsDir() {
+		dir = filepath.Dir(prefix)
+		base = filepath.Base(prefix)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // silent fail for fzf reload
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if base != "" && !strings.HasPrefix(strings.ToLower(e.Name()), strings.ToLower(base)) {
+			continue
+		}
+		fmt.Println(filepath.Join(dir, e.Name()))
+	}
+	return nil
 }
 
 func stateFilePath() string {
@@ -290,7 +333,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 	writeStateFile(make(map[string]bool))
 
 	for {
-		action, ids, err := launchFzf()
+		action, ids, query, err := launchFzf()
 		if err != nil {
 			return nil
 		}
@@ -298,7 +341,11 @@ func runUI(cmd *cobra.Command, args []string) error {
 		switch action {
 		case "enter":
 			if len(ids) >= 2 {
-				return doMerge(ids)
+				if err := doMerge(ids); err != nil {
+					fmt.Fprintf(os.Stderr, "merge: %v\n", err)
+				}
+				pause()
+				continue
 			}
 			return nil
 		case "ctrl-o":
@@ -314,11 +361,38 @@ func runUI(cmd *cobra.Command, args []string) error {
 				if err := doDiff(ids[0], ids[1]); err != nil {
 					fmt.Fprintf(os.Stderr, "diff: %v\n", err)
 				}
-				fmt.Println("\nPress enter to continue...")
-				fmt.Scanln()
+				pause()
 				continue
 			}
 			fmt.Fprintf(os.Stderr, "diff requires exactly 2 selected sessions\n")
+			continue
+		case "ctrl-t":
+			if len(ids) == 1 {
+				runTasks(nil, []string{ids[0]})
+			}
+			pause()
+			continue
+		case "ctrl-l":
+			if len(ids) == 1 {
+				runTimeline(nil, []string{ids[0]})
+			}
+			pause()
+			continue
+		case "ctrl-p":
+			runPlans(nil, nil)
+			pause()
+			continue
+		case "ctrl-a":
+			runActivity(nil, nil)
+			pause()
+			continue
+		case "ctrl-s":
+			if query != "" {
+				runSearch(nil, []string{query})
+			} else {
+				fmt.Fprintf(os.Stderr, "type a query first, then press ctrl-s to search\n")
+			}
+			pause()
 			continue
 		default:
 			return nil
@@ -326,48 +400,51 @@ func runUI(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func launchFzf() (action string, ids []string, err error) {
+func launchFzf() (action string, ids []string, query string, err error) {
 	collapsedSet := readStateFile()
 	lines := buildFzfLines(collapsedSet)
 	if len(lines) == 0 {
-		return "", nil, fmt.Errorf("no sessions found")
+		return "", nil, "", fmt.Errorf("no sessions found")
 	}
 
 	input := strings.Join(lines, "\n")
 	csmBin, _ := os.Executable()
 
-	header := "TAB select  ENTER merge  ctrl-d delete  ctrl-r rename  ctrl-o move  ctrl-f diff  ctrl-g fold/unfold  ESC quit"
+	header := "SPACE select/fold  ENTER merge  ctrl-d del  ctrl-o move  ctrl-f diff\nctrl-t tasks  ctrl-l timeline  ctrl-s search  ctrl-p plans  ctrl-a activity  ESC quit"
 
 	fzfCmd := exec.Command("fzf",
 		"--multi",
 		"--ansi",
 		"--no-sort",
 		"--layout=reverse",
-		"--expect", "enter,ctrl-o,ctrl-f",
+		"--print-query",
+		"--expect", "enter,ctrl-o,ctrl-f,ctrl-t,ctrl-l,ctrl-p,ctrl-a,ctrl-s",
 		"--header", header,
 		"--prompt", "csm> ",
 		"--preview", csmBin+" show {1}",
 		"--preview-window", "right:50%:wrap",
 		"--bind", fmt.Sprintf("ctrl-d:execute-silent(%s rm --force {1})+reload(%s _fzf-lines)", csmBin, csmBin),
-		"--bind", fmt.Sprintf("ctrl-r:execute(%s _rename-tty {1})+reload(%s _fzf-lines)", csmBin, csmBin),
-		"--bind", fmt.Sprintf("ctrl-g:reload(%s _toggle-group {n})", csmBin),
+		"--bind", fmt.Sprintf("space:transform(echo {} | grep -q '[▼▶]' && echo 'reload(%s _toggle-group {n})' || echo 'toggle')", csmBin),
 	)
 	fzfCmd.Stdin = strings.NewReader(input)
 	fzfCmd.Stderr = os.Stderr
 
 	out, err := fzfCmd.Output()
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 
-	outputLines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(outputLines) == 0 {
-		return "", nil, fmt.Errorf("cancelled")
+	// --print-query output: line 0 = query (may be empty), line 1 = action key, line 2+ = selected items
+	// Don't TrimSpace the whole output — empty query line would be stripped
+	outputLines := strings.Split(string(out), "\n")
+	if len(outputLines) < 2 {
+		return "", nil, "", fmt.Errorf("cancelled")
 	}
 
-	action = strings.TrimSpace(outputLines[0])
+	query = strings.TrimSpace(outputLines[0])
+	action = strings.TrimSpace(outputLines[1])
 
-	for _, line := range outputLines[1:] {
+	for _, line := range outputLines[2:] {
 		clean := stripAnsi(strings.TrimSpace(line))
 		if clean == "" || strings.HasPrefix(clean, collapsed) || strings.HasPrefix(clean, expanded) {
 			continue
@@ -378,7 +455,12 @@ func launchFzf() (action string, ids []string, err error) {
 		}
 	}
 
-	return action, ids, nil
+	return action, ids, query, nil
+}
+
+func pause() {
+	fmt.Println("\nPress enter to continue...")
+	fmt.Scanln()
 }
 
 func doMove(id string) error {
@@ -485,3 +567,4 @@ func doDiff(idA, idB string) error {
 
 	return nil
 }
+

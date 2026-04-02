@@ -4,14 +4,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/ash0x0/csm)](https://goreportcard.com/report/github.com/ash0x0/csm)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Fast CLI tool for managing [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions. List, search, merge, rename, move, and delete sessions from the terminal.
+Fast CLI tool for managing [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions. List, search, merge, diff, move, and delete sessions from the terminal.
 
 ## Features
 
 - **Fast listing** — scans all sessions in ~9ms (cached), grouped by project
 - **Interactive TUI** — fzf-based interface with preview, multi-select, and collapsible project groups
 - **Full merge** — combine multiple sessions into one with complete conversation history preserved
-- **Session management** — rename, move between projects, delete with safety checks
+- **Session management** — move between projects, delete with safety checks
 - **Search** — find sessions by ID prefix or title substring
 - **Index repair** — rebuild stale `sessions-index.json` files (fixes `/resume` picker)
 - **Storage stats** — disk usage breakdown by project and artifact type
@@ -55,7 +55,7 @@ make install
 ## Quick Start
 
 ```bash
-# Interactive TUI — browse, merge, rename, delete, move sessions
+# Interactive TUI — browse, merge, diff, delete, move sessions
 csm
 
 # List all sessions grouped by project
@@ -79,9 +79,9 @@ csm reindex
 | `csm` | Interactive TUI (default when no args) |
 | `csm list` | List sessions grouped by project |
 | `csm show <id>` | Show session details and prompt timeline |
-| `csm merge [ids...]` | Merge sessions with full event history |
+| `csm merge [ids...]` | Merge sessions (git-style dedup of shared history) |
+| `csm diff <a> <b>` | Compare two sessions (identical, superset, diverged, unrelated) |
 | `csm rm [ids...]` | Delete sessions and artifacts |
-| `csm rename <id> [title]` | Rename a session |
 | `csm move <id> [project]` | Move a session to another project |
 | `csm reindex` | Rebuild session indexes |
 | `csm stats` | Show storage breakdown |
@@ -100,6 +100,7 @@ csm reindex
 | `--fzf` | Compact output for piping to fzf |
 | `--json` | JSON output |
 | `--sort` | Sort by: `modified` (default), `created`, `messages`, `size` |
+| `--orphaned`, `-O` | List projects whose paths no longer exist |
 
 ### Delete flags
 
@@ -117,15 +118,14 @@ Run `csm` with no arguments to open the interactive interface:
 
 | Key | Action |
 |-----|--------|
-| `TAB` | Select/deselect sessions for merge |
+| `SPACE` | Select session / fold-unfold project group |
 | `ENTER` | Merge selected sessions (2+) |
 | `ctrl-d` | Delete highlighted session |
-| `ctrl-r` | Rename highlighted session |
 | `ctrl-o` | Move highlighted session to another project |
-| `ctrl-g` | Fold/unfold project group |
+| `ctrl-f` | Diff two selected sessions |
 | `ESC` | Quit |
 
-The right pane shows a preview of the highlighted session's details and prompt history.
+Merge, move, and diff all return to the TUI after completing. The right pane shows a preview of the highlighted session's details and prompt history.
 
 ## How It Works
 

@@ -12,7 +12,7 @@ import (
 var claudeDir string
 
 // dirtyProjects tracks project directories modified during this run.
-// Commands that create, delete, move, merge, or rename sessions add
+// Commands that create, delete, move, or merge sessions add
 // their project dirs here. On exit, these dirs get reindexed so that
 // Claude Code's /resume picker stays in sync.
 var dirtyProjects = make(map[string]bool)
@@ -38,6 +38,12 @@ var rootCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Reindexed %s (%d sessions)\n", filepath.Base(dir), count)
 		}
 	},
+}
+
+func clearCache() {
+	if err := os.Remove(filepath.Join(claudeDir, "csm-cache.json")); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "warning: failed to clear cache: %v\n", err)
+	}
 }
 
 func Execute() {
