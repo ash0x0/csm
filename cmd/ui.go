@@ -104,8 +104,8 @@ func checkFzfVersion() error {
 	}
 	major, _ := strconv.Atoi(parts[0])
 	minor, _ := strconv.Atoi(parts[1])
-	if major == 0 && minor < 47 {
-		return fmt.Errorf("fzf 0.47.0+ required (found %s) — upgrade with: nix profile install nixpkgs#fzf", fields[0])
+	if major == 0 && minor < 30 {
+		return fmt.Errorf("fzf 0.30.0+ required (found %s) — upgrade with: nix profile install nixpkgs#fzf", fields[0])
 	}
 	return nil
 }
@@ -456,7 +456,11 @@ func launchFzf() (action string, ids []string, query string, err error) {
 		"--preview", csmBin+" show {1}",
 		"--preview-window", "right:50%:wrap",
 		"--bind", fmt.Sprintf("ctrl-d:execute(%s rm --force {1})+reload(%s _fzf-lines)", csmBin, csmBin),
-		"--bind", fmt.Sprintf("space:transform(echo {} | grep -q '[▼▶]' && echo 'reload(%s _toggle-group {n})' || echo 'toggle')", csmBin),
+		// execute-silent runs _toggle-group only when the line is a group header (grep fails silently
+		// for session lines). toggle then toggles selection (harmless for headers since they are
+		// filtered in output parsing). reload refreshes the list so collapse/expand is visible.
+		// This avoids the `transform` action which requires fzf 0.47.0+.
+		"--bind", fmt.Sprintf("space:execute-silent(echo {} | grep -q '[▼▶]' && %s _toggle-group {n})+toggle+reload(%s _fzf-lines)", csmBin, csmBin),
 	)
 	fzfCmd.Stdin = strings.NewReader(input)
 	fzfCmd.Stderr = os.Stderr
