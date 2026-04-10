@@ -29,6 +29,10 @@ func runMove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if meta.IsActive {
+		return fmt.Errorf("session %s is active — cannot move a running session", meta.ShortID)
+	}
+
 	var destProject string
 	if len(args) >= 2 {
 		destProject = args[1]
@@ -59,7 +63,7 @@ func runMove(cmd *cobra.Command, args []string) error {
 
 func pickProject(currentProject string) (string, error) {
 	if _, err := exec.LookPath("fzf"); err != nil {
-		return "", fmt.Errorf("fzf is required for interactive mode")
+		return "", fmt.Errorf("fzf is required (install with: nix profile install nixpkgs#fzf)")
 	}
 
 	projects, err := session.ListProjects(claudeDir)

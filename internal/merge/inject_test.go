@@ -348,6 +348,54 @@ func TestMergeNCustomTitle(t *testing.T) {
 	}
 }
 
+func TestMergeNSkipsIdenticalPair(t *testing.T) {
+	claudeDir := testutil.CreateTempClaudeDir(t)
+	projDir := testutil.CreateProject(t, claudeDir, "/home/user/myproject")
+
+	base := time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
+	// m1 and m2 share identical events (same session file content)
+	m1 := buildMeta(t, projDir, "Session A", base, 2)
+
+	// Build m2 with the exact same events as m1
+	sessionID2 := uuid.New().String()
+	eventsA, err := session.ReadRawEvents(m1.FilePath)
+	if err != nil {
+		t.Fatalf("reading m1 events: %v", err)
+	}
+	// Write the same uuid-bearing events under a new session ID so they look identical to merge2Events
+	// (copy the original events with the same UUIDs)
+	filePath2 := filepath.Join(projDir, sessionID2+".jsonl")
+	f, err := os.Create(filePath2)
+	if err != nil {
+		t.Fatalf("creating m2 file: %v", err)
+	}
+	enc := json.NewEncoder(f)
+	for _, ev := range eventsA {
+		enc.Encode(ev)
+	}
+	f.Close()
+
+	m2 := &session.SessionMeta{
+		ID:       sessionID2,
+		ShortID:  sessionID2[:8],
+		Title:    "Session A Copy",
+		FilePath: filePath2,
+		Modified: base.Add(1 * time.Hour),
+	}
+	m3 := buildMeta(t, projDir, "Session B", base.Add(2*time.Hour), 1)
+
+	// Merging [m1, m2 (identical to m1), m3] should succeed, skipping m2
+	newID, err := MergeN([]*session.SessionMeta{m1, m2, m3}, MergeOptions{
+		OutputDir: projDir,
+	})
+	if err != nil {
+		t.Fatalf("MergeN with identical pair should not return error, got: %v", err)
+	}
+	if newID == "" {
+		t.Error("expected a new session ID")
+	}
+}
+
 func TestMergeNLessThanTwo(t *testing.T) {
 	m1 := &session.SessionMeta{ID: "a"}
 	_, err := MergeN([]*session.SessionMeta{m1}, MergeOptions{})

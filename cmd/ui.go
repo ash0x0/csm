@@ -374,6 +374,11 @@ func runUI(cmd *cobra.Command, args []string) error {
 				pause()
 				continue
 			}
+			if len(ids) == 1 {
+				fmt.Fprintf(os.Stderr, "select at least 2 sessions to merge\n")
+				pause()
+				continue
+			}
 			return nil
 		case "ctrl-o":
 			if len(ids) == 1 {
@@ -450,7 +455,7 @@ func launchFzf() (action string, ids []string, query string, err error) {
 		"--prompt", "csm> ",
 		"--preview", csmBin+" show {1}",
 		"--preview-window", "right:50%:wrap",
-		"--bind", fmt.Sprintf("ctrl-d:execute-silent(%s rm --force {1})+reload(%s _fzf-lines)", csmBin, csmBin),
+		"--bind", fmt.Sprintf("ctrl-d:execute(%s rm --force {1})+reload(%s _fzf-lines)", csmBin, csmBin),
 		"--bind", fmt.Sprintf("space:transform(echo {} | grep -q '[▼▶]' && echo 'reload(%s _toggle-group {n})' || echo 'toggle')", csmBin),
 	)
 	fzfCmd.Stdin = strings.NewReader(input)
@@ -494,6 +499,10 @@ func doMove(id string) error {
 	meta, err := findSession(id)
 	if err != nil {
 		return err
+	}
+
+	if meta.IsActive {
+		return fmt.Errorf("session %s is active — cannot move a running session", meta.ShortID)
 	}
 
 	dest, err := pickProject(meta.Project)
@@ -540,7 +549,9 @@ func doMerge(ids []string) error {
 		return fmt.Errorf("merge failed: %w", err)
 	}
 
-	MarkDirty(filepath.Dir(metas[0].FilePath))
+	for _, m := range metas {
+		MarkDirty(filepath.Dir(m.FilePath))
+	}
 
 	fmt.Printf("Created merged session: %s\n", newID)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])

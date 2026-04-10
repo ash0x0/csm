@@ -425,22 +425,28 @@ func ReadFullSession(filePath string) ([]Event, error) {
 
 // ReadRawEvents reads all JSONL lines as raw maps, preserving every field.
 func ReadRawEvents(filePath string) ([]map[string]any, error) {
+	events, _, err := ReadRawEventsWithStats(filePath)
+	return events, err
+}
+
+// ReadRawEventsWithStats reads all JSONL lines as raw maps and reports how many lines were skipped due to corrupt JSON.
+func ReadRawEventsWithStats(filePath string) (events []map[string]any, skipped int, err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 
-	var events []map[string]any
 	dec := json.NewDecoder(f)
 	for dec.More() {
 		var ev map[string]any
-		if err := dec.Decode(&ev); err != nil {
+		if decErr := dec.Decode(&ev); decErr != nil {
+			skipped++
 			continue
 		}
 		events = append(events, ev)
 	}
-	return events, nil
+	return events, skipped, nil
 }
 
 // ReadUserPrompts extracts user text from a session file, up to maxPrompts.

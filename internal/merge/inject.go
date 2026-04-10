@@ -39,22 +39,32 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 	})
 
 	// Load first session's events as the accumulator
-	accumulated, err := session.ReadRawEvents(metas[0].FilePath)
+	accumulated, skipped, err := session.ReadRawEventsWithStats(metas[0].FilePath)
 	if err != nil {
 		return "", fmt.Errorf("reading session 1 (%s): %w", metas[0].ShortID, err)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "warning: session 1 (%s): skipped %d corrupt lines\n", metas[0].ShortID, skipped)
 	}
 
 	// Accumulate stats across pairwise merges
 	totalStats := mergeStats{}
 
 	for i := 1; i < len(metas); i++ {
-		next, err := session.ReadRawEvents(metas[i].FilePath)
+		next, sk, err := session.ReadRawEventsWithStats(metas[i].FilePath)
 		if err != nil {
 			return "", fmt.Errorf("reading session %d (%s): %w", i+1, metas[i].ShortID, err)
+		}
+		if sk > 0 {
+			fmt.Fprintf(os.Stderr, "warning: session %d (%s): skipped %d corrupt lines\n", i+1, metas[i].ShortID, sk)
 		}
 
 		merged, stats, err := merge2Events(accumulated, next)
 		if err != nil {
+			if stats.Strategy == "identical" {
+				fmt.Fprintf(os.Stderr, "skipping session %d (%s): identical to accumulated result\n", i+1, metas[i].ShortID)
+				continue
+			}
 			return "", fmt.Errorf("merging session %d (%s): %w", i+1, metas[i].ShortID, err)
 		}
 		accumulated = merged
@@ -91,7 +101,9 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 
 	succeeded := false
 	defer func() {
-		f.Close()
+		if f != nil {
+			f.Close()
+		}
 		if !succeeded {
 			os.Remove(tmpPath)
 		}
@@ -100,16 +112,20 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 	enc := json.NewEncoder(f)
 
 	// Write header events
-	enc.Encode(map[string]any{
+	if err := enc.Encode(map[string]any{
 		"type":        "custom-title",
 		"customTitle": title,
 		"sessionId":   newID,
-	})
-	enc.Encode(map[string]any{
+	}); err != nil {
+		return "", fmt.Errorf("writing custom-title header: %w", err)
+	}
+	if err := enc.Encode(map[string]any{
 		"type":      "agent-name",
 		"agentName": title,
 		"sessionId": newID,
-	})
+	}); err != nil {
+		return "", fmt.Errorf("writing agent-name header: %w", err)
+	}
 
 	// Write merged events, rewriting sessionId
 	for _, ev := range accumulated {
@@ -122,9 +138,13 @@ func MergeN(metas []*session.SessionMeta, opts MergeOptions) (string, error) {
 	}
 
 	// Flush and rename
+	if err := f.Sync(); err != nil {
+		return "", err
+	}
 	if err := f.Close(); err != nil {
 		return "", err
 	}
+	f = nil // prevent double-close in defer
 	if err := os.Rename(tmpPath, outputPath); err != nil {
 		return "", err
 	}

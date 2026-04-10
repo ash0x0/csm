@@ -2,9 +2,13 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // RebuildIndex rebuilds sessions-index.json for a project directory.
@@ -113,6 +117,16 @@ func DeleteSession(claudeDir string, meta *SessionMeta) ([]string, error) {
 		}
 	}
 
+	// 6. If no JSONL files remain in project dir, remove index and project dir
+	remaining, _ := filepath.Glob(filepath.Join(projDir, "*.jsonl"))
+	if len(remaining) == 0 {
+		os.Remove(idxPath)
+		os.Remove(projDir)
+	}
+
+	// 7. Invalidate cache
+	os.Remove(filepath.Join(claudeDir, "csm-cache.json"))
+
 	return deleted, nil
 }
 
@@ -129,16 +143,20 @@ func MoveSession(claudeDir string, meta *SessionMeta, destProject string) (strin
 
 	destPath := filepath.Join(destDir, filepath.Base(meta.FilePath))
 
-	// Move JSONL file
-	if err := os.Rename(meta.FilePath, destPath); err != nil {
+	// Move JSONL file (with cross-filesystem fallback)
+	if err := moveFile(meta.FilePath, destPath); err != nil {
 		return "", err
 	}
 
-	// Move subagent directory if it exists
+	// Move subagent directory if it exists; rollback JSONL on failure
 	subDir := strings.TrimSuffix(meta.FilePath, ".jsonl")
 	destSubDir := strings.TrimSuffix(destPath, ".jsonl")
 	if info, err := os.Stat(subDir); err == nil && info.IsDir() {
-		os.Rename(subDir, destSubDir)
+		if err := os.Rename(subDir, destSubDir); err != nil {
+			// Rollback JSONL move
+			moveFile(destPath, meta.FilePath) //nolint:errcheck
+			return "", fmt.Errorf("moving subagent dir: %w", err)
+		}
 	}
 
 	// Remove from source index
@@ -152,6 +170,47 @@ func MoveSession(claudeDir string, meta *SessionMeta, destProject string) (strin
 	os.Remove(filepath.Join(claudeDir, "csm-cache.json"))
 
 	return destPath, nil
+}
+
+// moveFile moves src to dst, falling back to copy+sync+delete across filesystem boundaries.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err != nil {
+		var linkErr *os.LinkError
+		if errors.As(err, &linkErr) && errors.Is(linkErr.Err, syscall.EXDEV) {
+			return copyAndDelete(src, dst)
+		}
+		return err
+	}
+	return nil
+}
+
+func copyAndDelete(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create dest: %w", err)
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return fmt.Errorf("copy: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return fmt.Errorf("sync: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return fmt.Errorf("close dest: %w", err)
+	}
+	return os.Remove(src)
 }
 
 func encodeProjectPath(path string) string {

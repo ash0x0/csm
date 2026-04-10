@@ -59,6 +59,83 @@ func TestSplitEvents(t *testing.T) {
 	}
 }
 
+func TestSplitEventsEmptyUUID(t *testing.T) {
+	// Events with uuid: "" should be treated as metadata, not uuid-bearing
+	events := []map[string]any{
+		{"type": "custom-title", "uuid": ""},
+		{"type": "user", "uuid": "real-uuid"},
+		{"type": "system", "uuid": ""},
+	}
+
+	uuidBearing, metadata := splitEvents(events)
+
+	if len(uuidBearing) != 1 {
+		t.Errorf("uuid-bearing count = %d, want 1 (only real-uuid)", len(uuidBearing))
+	}
+	if len(metadata) != 2 {
+		t.Errorf("metadata count = %d, want 2 (empty-uuid events)", len(metadata))
+	}
+}
+
+func TestMerge2ConcatSortsByTimestamp(t *testing.T) {
+	claudeDir := testutil.CreateTempClaudeDir(t)
+	projDir := testutil.CreateProject(t, claudeDir, "/home/user/myproject")
+
+	// Session A: events at 10:00, 10:01
+	earlier := time.Date(2026, 3, 20, 8, 0, 0, 0, time.UTC)
+	// Session B: events at 09:00 (earlier than A) to test sorting
+	later := time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC)
+
+	sessionIDA := uuid.New().String()
+	sessionIDB := uuid.New().String()
+
+	eventsA := []map[string]any{
+		testutil.MakeUserMessage(sessionIDA, "", "msg from A", "2026-03-20T10:00:00Z"),
+	}
+	eventsB := []map[string]any{
+		testutil.MakeUserMessage(sessionIDB, "", "msg from B", "2026-03-20T09:00:00Z"),
+	}
+
+	fileA := testutil.WriteSession(t, projDir, sessionIDA, eventsA)
+	fileB := testutil.WriteSession(t, projDir, sessionIDB, eventsB)
+
+	metaA := &session.SessionMeta{ID: sessionIDA, ShortID: sessionIDA[:8], Title: "A", FilePath: fileA, Modified: later}
+	metaB := &session.SessionMeta{ID: sessionIDB, ShortID: sessionIDB[:8], Title: "B", FilePath: fileB, Modified: earlier}
+
+	// These sessions share no events → concat strategy
+	merged, stats, err := merge2Events(
+		[]map[string]any{eventsA[0]},
+		[]map[string]any{eventsB[0]},
+	)
+	if err != nil {
+		t.Fatalf("merge2Events: %v", err)
+	}
+	if stats.Strategy != "concat" {
+		t.Fatalf("expected concat strategy, got %s", stats.Strategy)
+	}
+
+	// Find uuid-bearing events in order — B's event (09:00) should come before A's (10:00)
+	var uuidEvents []map[string]any
+	for _, ev := range merged {
+		if _, has := ev["uuid"]; has {
+			uuidEvents = append(uuidEvents, ev)
+		}
+	}
+	if len(uuidEvents) < 2 {
+		t.Fatalf("expected 2 uuid-bearing events, got %d", len(uuidEvents))
+	}
+
+	// B's message (09:00) should be first
+	firstMsg, _ := uuidEvents[0]["message"].(map[string]any)
+	firstContent, _ := firstMsg["content"].(string)
+	if firstContent != "msg from B" {
+		t.Errorf("first event content = %q, want %q (B at 09:00 should sort before A at 10:00)", firstContent, "msg from B")
+	}
+
+	_ = metaA
+	_ = metaB
+}
+
 func TestRechainEvents(t *testing.T) {
 	events := []map[string]any{
 		{"type": "system", "uuid": "a", "parentUuid": "old1"},

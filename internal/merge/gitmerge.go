@@ -17,7 +17,7 @@ type mergeStats struct {
 // splitEvents classifies events into uuid-bearing and metadata-only.
 func splitEvents(events []map[string]any) (uuidBearing, metadata []map[string]any) {
 	for _, ev := range events {
-		if _, has := ev["uuid"]; has {
+		if u, has := ev["uuid"]; has && u != "" {
 			uuidBearing = append(uuidBearing, ev)
 		} else {
 			metadata = append(metadata, ev)
@@ -255,16 +255,21 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 		return result, stats, nil
 	}
 
-	// No shared events — concatenate
+	// No shared events — concatenate, sorted by timestamp
 	if a.Length == 0 {
 		stats.Strategy = "concat"
 		stats.BranchAOnly = len(uuidA)
 		stats.BranchBOnly = len(uuidB)
 		dedupMeta := deduplicateMetadata(metaA, metaB)
-		all := make([]map[string]any, 0, len(dedupMeta)+len(uuidA)+len(uuidB))
+		allUUID := make([]map[string]any, 0, len(uuidA)+len(uuidB))
+		allUUID = append(allUUID, uuidA...)
+		allUUID = append(allUUID, uuidB...)
+		sort.SliceStable(allUUID, func(i, j int) bool {
+			return parseTimestamp(allUUID[i]).Before(parseTimestamp(allUUID[j]))
+		})
+		all := make([]map[string]any, 0, len(dedupMeta)+len(allUUID))
 		all = append(all, dedupMeta...)
-		all = append(all, uuidA...)
-		all = append(all, uuidB...)
+		all = append(all, allUUID...)
 		// Rechain ALL uuid events linearly so Claude Code can walk the
 		// entire conversation from last event to first. Sessions may have
 		// internal branching (tree-shaped parentUuid) which would leave

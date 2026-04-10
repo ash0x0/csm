@@ -2,11 +2,10 @@ package session
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"syscall"
 )
 
 type activeSession struct {
@@ -50,6 +49,6 @@ func ActiveSessionIDs(claudeDir string) (map[string]bool, error) {
 }
 
 func isProcessRunning(pid int) bool {
-	_, err := os.Stat(fmt.Sprintf("/proc/%s", strconv.Itoa(pid)))
-	return err == nil
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
 }

@@ -157,7 +157,8 @@ func runRm(cmd *cobra.Command, args []string) error {
 }
 
 func cleanOrphaned() error {
-	orphans, err := session.CleanOrphanedArtifacts(claudeDir, rmDryRun)
+	// Discover orphans with a dry-run first
+	orphans, err := session.CleanOrphanedArtifacts(claudeDir, true)
 	if err != nil {
 		return err
 	}
@@ -166,17 +167,28 @@ func cleanOrphaned() error {
 		return nil
 	}
 	for _, o := range orphans {
-		if rmDryRun {
-			fmt.Printf("Would delete: %s\n", o)
-		} else {
-			fmt.Printf("Deleted: %s\n", o)
+		fmt.Printf("Would delete: %s\n", o)
+	}
+	fmt.Printf("\n%d orphaned artifacts found.\n", len(orphans))
+
+	if rmDryRun {
+		fmt.Println("(dry run — no files deleted)")
+		return nil
+	}
+
+	if !rmForce {
+		fmt.Print("\nProceed with deletion? [y/N] ")
+		if !confirm() {
+			fmt.Println("Aborted.")
+			return nil
 		}
 	}
-	if rmDryRun {
-		fmt.Printf("\n%d orphaned artifacts (dry run)\n", len(orphans))
-	} else {
-		fmt.Printf("\n%d orphaned artifacts cleaned.\n", len(orphans))
+
+	// Now actually delete
+	if _, err := session.CleanOrphanedArtifacts(claudeDir, false); err != nil {
+		return err
 	}
+	fmt.Printf("%d orphaned artifacts cleaned.\n", len(orphans))
 	return nil
 }
 
