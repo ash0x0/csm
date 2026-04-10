@@ -53,8 +53,10 @@ func runTimeline(cmd *cobra.Command, args []string) error {
 		case "user":
 			fmt.Printf("  %s  > %s\n", ts, ev.Summary)
 		case "assistant":
-			if ev.TokensOut > 0 {
+			if ev.TokensOut >= 1000 {
 				fmt.Printf("  %s  < assistant (%dk tokens)\n", ts, ev.TokensOut/1000)
+			} else if ev.TokensOut > 0 {
+				fmt.Printf("  %s  < assistant (%d tokens)\n", ts, ev.TokensOut)
 			} else {
 				fmt.Printf("  %s  < assistant\n", ts)
 			}

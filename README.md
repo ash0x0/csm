@@ -12,9 +12,13 @@ Fast CLI tool for managing [Claude Code](https://docs.anthropic.com/en/docs/clau
 - **Interactive TUI** — fzf-based interface with preview, multi-select, and collapsible project groups
 - **Full merge** — combine multiple sessions into one with complete conversation history preserved
 - **Session management** — move between projects, delete with safety checks
-- **Search** — find sessions by ID prefix or title substring
+- **Search** — find sessions by content, title, or prompt with optional date filtering
+- **Timeline** — chronological view of a session's conversation turns with token counts
+- **Tasks** — show the task tree for a session with completion status
+- **Plans** — list plan files correlated with the sessions that generated them
+- **Activity** — GitHub-style contribution heatmap of your Claude Code usage
 - **Index repair** — rebuild stale `sessions-index.json` files (fixes `/resume` picker)
-- **Storage stats** — disk usage breakdown by project and artifact type
+- **Storage stats** — disk usage breakdown by project and artifact type (sorted by size)
 
 ## Installation
 
@@ -78,13 +82,18 @@ csm reindex
 |---------|-------------|
 | `csm` | Interactive TUI (default when no args) |
 | `csm list` | List sessions grouped by project |
-| `csm show <id>` | Show session details and prompt timeline |
+| `csm show <id>` | Show session details, prompt history, files touched, and tasks |
 | `csm merge [ids...]` | Merge sessions (git-style dedup of shared history) |
 | `csm diff <a> <b>` | Compare two sessions (identical, superset, diverged, unrelated) |
+| `csm search <query>` | Search sessions by title or prompt content |
+| `csm timeline <id>` | Show chronological conversation timeline with token counts |
+| `csm tasks <id>` | Show task tree with completion status |
+| `csm plans [slug]` | List plan files correlated with sessions |
+| `csm activity` | GitHub-style heatmap of daily Claude Code usage |
 | `csm rm [ids...]` | Delete sessions and artifacts |
 | `csm move <id> [project]` | Move a session to another project |
 | `csm reindex` | Rebuild session indexes |
-| `csm stats` | Show storage breakdown |
+| `csm stats` | Show storage breakdown sorted by size |
 | `csm version` | Print version |
 
 ### List flags
@@ -101,6 +110,23 @@ csm reindex
 | `--json` | JSON output |
 | `--sort` | Sort by: `modified` (default), `created`, `messages`, `size` |
 | `--orphaned`, `-O` | List projects whose paths no longer exist |
+
+### Show flags
+
+| Flag | Description |
+|------|-------------|
+| `--files` | Show files modified during the session |
+| `--max-prompts` | Number of recent prompts to display (default: 5) |
+| `--json` | JSON output |
+
+### Search flags
+
+| Flag | Description |
+|------|-------------|
+| `--deep` | Also search all user prompts (slower) |
+| `--project`, `-p` | Filter by project path substring |
+| `--since` | Only show sessions modified after this date (YYYY-MM-DD) |
+| `--json` | JSON output |
 
 ### Delete flags
 
@@ -123,9 +149,14 @@ Run `csm` with no arguments to open the interactive interface:
 | `ctrl-d` | Delete highlighted session |
 | `ctrl-o` | Move highlighted session to another project |
 | `ctrl-f` | Diff two selected sessions |
+| `ctrl-t` | Show task tree for highlighted session |
+| `ctrl-l` | Show conversation timeline for highlighted session |
+| `ctrl-s` | Search sessions (uses current query as search term) |
+| `ctrl-p` | Show plans correlated with sessions |
+| `ctrl-a` | Show activity heatmap |
 | `ESC` | Quit |
 
-Merge, move, and diff all return to the TUI after completing. The right pane shows a preview of the highlighted session's details and prompt history.
+All sub-commands return to the TUI after completing. The right pane shows a preview of the highlighted session's details, files touched, and task summary.
 
 ## How It Works
 

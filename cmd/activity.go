@@ -80,13 +80,9 @@ func printHeatmap(stats statsCache, weeks int) {
 		dateMap[d.Date] = d.MessageCount
 	}
 
-	// Find the date range
+	// Find the date range — end at today, never show future dates
 	now := time.Now()
-	// Align to the most recent Sunday
 	endDate := now
-	for endDate.Weekday() != time.Saturday {
-		endDate = endDate.AddDate(0, 0, 1)
-	}
 	startDate := endDate.AddDate(0, 0, -7*weeks+1)
 
 	fmt.Printf("Activity (last %d weeks)\n", weeks)
@@ -108,7 +104,7 @@ func printHeatmap(stats statsCache, weeks int) {
 		}
 		fmt.Println()
 	}
-	fmt.Println("        " + strings.Repeat(" ", weeks/2-2) + "less " + heatBlock(0) + heatBlock(3) + heatBlock(10) + heatBlock(20) + " more")
+	fmt.Println("        " + strings.Repeat(" ", weeks/2-2) + "less " + heatBlock(0) + heatBlock(3) + heatBlock(10) + heatBlock(100) + " more")
 }
 
 func heatBlock(count int) string {

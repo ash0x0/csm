@@ -87,7 +87,7 @@ func runListDirs(cmd *cobra.Command, args []string) error {
 }
 
 func stateFilePath() string {
-	return os.TempDir() + "/csm-collapse-state"
+	return fmt.Sprintf("%s/csm-collapse-%d", os.TempDir(), os.Getuid())
 }
 
 func readStateFile() map[string]bool {

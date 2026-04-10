@@ -136,8 +136,10 @@ func runRm(cmd *cobra.Command, args []string) error {
 	}
 
 	deleted := 0
+	skipped := 0
 	for _, s := range candidates {
 		if s.IsActive {
+			skipped++
 			continue
 		}
 		if _, err := session.DeleteSession(claudeDir, &s); err != nil {
@@ -148,6 +150,9 @@ func runRm(cmd *cobra.Command, args []string) error {
 		deleted++
 	}
 	fmt.Printf("Deleted %d sessions.\n", deleted)
+	if skipped > 0 {
+		fmt.Printf("Skipped %d active sessions.\n", skipped)
+	}
 	return nil
 }
 

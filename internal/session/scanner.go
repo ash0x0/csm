@@ -806,11 +806,13 @@ func ReadTimeline(filePath string) ([]TimelineEvent, error) {
 			if !ok {
 				continue
 			}
-			content, ok := msg["content"].(string)
-			if !ok {
-				continue // tool_result blocks are []any, not string
+			summary := extractUserText(msg)
+			if summary == "" {
+				continue
 			}
-			summary := content
+			if isSystemInjected(summary) {
+				continue
+			}
 			if len(summary) > 80 {
 				summary = summary[:77] + "..."
 			}

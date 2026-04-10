@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -107,20 +106,4 @@ func formatModTime(t time.Time) string {
 		return t.Format("Jan 02")
 	}
 	return t.Format("2006-01-02")
-}
-
-func shortenPath(path string, maxLen int) string {
-	if len(path) <= maxLen {
-		return path
-	}
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-	if len(base) >= maxLen-4 {
-		return "..." + path[len(path)-maxLen+3:]
-	}
-	remaining := maxLen - len(base) - 4
-	if remaining > 0 && remaining < len(dir) {
-		return "..." + dir[len(dir)-remaining:] + "/" + base
-	}
-	return "..." + path[len(path)-maxLen+3:]
 }

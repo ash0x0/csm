@@ -133,12 +133,17 @@ func interactiveSelect() ([]string, error) {
 
 	input := strings.Join(lines, "\n")
 
+	self, err := os.Executable()
+	if err != nil {
+		self = "csm"
+	}
+
 	// Run fzf with multi-select
 	fzfCmd := exec.Command("fzf",
 		"--multi",
 		"--header", "Select sessions to merge (TAB to select, ENTER to confirm)",
 		"--prompt", "merge> ",
-		"--preview", "csm show {1}",
+		"--preview", self+" show {1}",
 		"--preview-window", "right:50%:wrap",
 	)
 	fzfCmd.Stdin = strings.NewReader(input)

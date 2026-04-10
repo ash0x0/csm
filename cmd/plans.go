@@ -30,6 +30,7 @@ func init() {
 type planEntry struct {
 	Slug      string `json:"slug"`
 	SessionID string `json:"session_id,omitempty"`
+	Title     string `json:"title,omitempty"`
 	Project   string `json:"project,omitempty"`
 	Modified  string `json:"modified"`
 	Path      string `json:"path"`
@@ -80,6 +81,7 @@ func listPlans(plansDir string) error {
 
 		if meta, ok := slugIndex[slug]; ok {
 			pe.SessionID = meta.ShortID
+			pe.Title = meta.Title
 			pe.Project = meta.Project
 		}
 
@@ -101,22 +103,26 @@ func listPlans(plansDir string) error {
 		return nil
 	}
 
-	fmt.Printf("%-35s  %-10s  %-40s  %s\n", "SLUG", "SESSION", "PROJECT", "MODIFIED")
-	fmt.Println(strings.Repeat("-", 100))
+	fmt.Printf("%-28s  %-8s  %-25s  %-28s  %s\n", "SLUG", "SESSION", "TITLE", "PROJECT", "MODIFIED")
+	fmt.Println(strings.Repeat("-", 105))
 	for _, p := range plans {
 		sid := p.SessionID
 		if sid == "" {
 			sid = "-"
 		}
+		title := truncStr(p.Title, 25)
+		if title == "" {
+			title = "-"
+		}
 		project := p.Project
-		if len(project) > 40 {
-			project = "..." + project[len(project)-37:]
+		if len(project) > 28 {
+			project = "..." + project[len(project)-25:]
 		}
 		mod := ""
 		if t, err := time.Parse(time.RFC3339, p.Modified); err == nil {
 			mod = formatPlanDate(t)
 		}
-		fmt.Printf("%-35s  %-10s  %-40s  %s\n", truncStr(p.Slug, 35), sid, project, mod)
+		fmt.Printf("%-28s  %-8s  %-25s  %-28s  %s\n", truncStr(p.Slug, 28), sid, title, project, mod)
 	}
 	fmt.Printf("\n%d plans\n", len(plans))
 	return nil

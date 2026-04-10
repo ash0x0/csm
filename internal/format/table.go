@@ -164,7 +164,15 @@ func PrintStats(stats map[string]ProjectStats, total TotalStats) {
 	fmt.Printf("%-35s  %5s  %10s\n", "PROJECT", "COUNT", "SIZE")
 	fmt.Println(strings.Repeat("─", 55))
 
-	for proj, ps := range stats {
+	keys := make([]string, 0, len(stats))
+	for k := range stats {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return stats[keys[i]].Size > stats[keys[j]].Size
+	})
+	for _, proj := range keys {
+		ps := stats[proj]
 		fmt.Printf("%-35s  %5d  %10s\n", truncateStr(proj, 35), ps.Count, formatSize(ps.Size))
 	}
 

@@ -164,8 +164,7 @@ func findSession(prefix string) (*session.SessionMeta, error) {
 		return nil, err
 	}
 	if meta == nil {
-		fmt.Fprintf(os.Stderr, "No session found matching '%s'\n", prefix)
-		os.Exit(1)
+		return nil, fmt.Errorf("no session found matching '%s'", prefix)
 	}
 	return meta, nil
 }
