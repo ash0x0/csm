@@ -145,6 +145,9 @@ func MoveSession(claudeDir string, meta *SessionMeta, destProject string) (strin
 	srcDir := filepath.Dir(meta.FilePath)
 	removeFromIndex(srcDir, meta.ID)
 
+	// Rebuild destination index (creates sessions-index.json if new project)
+	RebuildIndex(destDir)
+
 	// Invalidate cache
 	os.Remove(filepath.Join(claudeDir, "csm-cache.json"))
 
