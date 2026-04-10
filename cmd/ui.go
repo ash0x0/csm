@@ -89,25 +89,32 @@ func runListDirs(cmd *cobra.Command, args []string) error {
 // checkFzfVersion returns an error if fzf is older than 0.47.0,
 // which introduced the `transform` action used by the TUI.
 func checkFzfVersion() error {
+	major, minor := getFzfVersion()
+	if major == 0 && minor < 30 {
+		return fmt.Errorf("fzf 0.30.0+ required (found %d.%d) — upgrade with: nix profile install nixpkgs#fzf", major, minor)
+	}
+	return nil
+}
+
+// getFzfVersion returns the installed fzf major and minor version numbers.
+// Returns (0, 0) if the version cannot be determined.
+func getFzfVersion() (major, minor int) {
 	out, err := exec.Command("fzf", "--version").Output()
 	if err != nil {
-		return nil // can't determine version, let fzf fail naturally
+		return 0, 0
 	}
 	// output is like "0.47.0 (revision)"
 	fields := strings.Fields(string(out))
 	if len(fields) == 0 {
-		return nil
+		return 0, 0
 	}
 	parts := strings.Split(fields[0], ".")
 	if len(parts) < 2 {
-		return nil
+		return 0, 0
 	}
-	major, _ := strconv.Atoi(parts[0])
-	minor, _ := strconv.Atoi(parts[1])
-	if major == 0 && minor < 30 {
-		return fmt.Errorf("fzf 0.30.0+ required (found %s) — upgrade with: nix profile install nixpkgs#fzf", fields[0])
-	}
-	return nil
+	major, _ = strconv.Atoi(parts[0])
+	minor, _ = strconv.Atoi(parts[1])
+	return major, minor
 }
 
 func stateFilePath() string {
@@ -357,10 +364,11 @@ func runUI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	fzfMajor, fzfMinor := getFzfVersion()
 	writeStateFile(make(map[string]bool))
 
 	for {
-		action, ids, query, err := launchFzf()
+		action, ids, query, err := launchFzf(fzfMajor, fzfMinor)
 		if err != nil {
 			return nil
 		}
@@ -379,7 +387,8 @@ func runUI(cmd *cobra.Command, args []string) error {
 				pause()
 				continue
 			}
-			return nil
+			// 0 ids: Enter pressed on a group header or with nothing visible — stay in TUI
+			continue
 		case "ctrl-o":
 			if len(ids) == 1 {
 				if err := doMove(ids[0]); err != nil {
@@ -432,7 +441,7 @@ func runUI(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func launchFzf() (action string, ids []string, query string, err error) {
+func launchFzf(fzfMajor, fzfMinor int) (action string, ids []string, query string, err error) {
 	collapsedSet := readStateFile()
 	lines := buildFzfLines(collapsedSet)
 	if len(lines) == 0 {
@@ -442,13 +451,28 @@ func launchFzf() (action string, ids []string, query string, err error) {
 	input := strings.Join(lines, "\n")
 	csmBin, _ := os.Executable()
 
-	header := "SPACE select/fold  ENTER merge  ctrl-d del  ctrl-o move  ctrl-f diff\nctrl-t tasks  ctrl-l timeline  ctrl-s search  ctrl-p plans  ctrl-a activity  ESC quit"
+	// fzf >= 0.47 supports `transform`, which lets space conditionally reload
+	// (for group headers) or toggle-select (for session lines) without a reload
+	// on every keypress. Older fzf doesn't support transform, and reload clears
+	// multi-select state, so we fall back to plain toggle (no group fold).
+	hasTransform := fzfMajor >= 1 || (fzfMajor == 0 && fzfMinor >= 47)
+
+	var spaceBinding, header string
+	if hasTransform {
+		spaceBinding = fmt.Sprintf("space:transform(echo {} | grep -q '[▼▶]' && echo 'reload(%s _toggle-group {n})' || echo 'toggle')", csmBin)
+		header = "SPACE select/fold  ENTER merge  ctrl-d del  ctrl-o move  ctrl-f diff\nctrl-t tasks  ctrl-l timeline  ctrl-s search  ctrl-p plans  ctrl-a activity  ESC quit"
+	} else {
+		// No group fold on older fzf — space and tab both select
+		spaceBinding = "space:toggle"
+		header = "SPACE/TAB select  ENTER merge  ctrl-d del  ctrl-o move  ctrl-f diff\nctrl-t tasks  ctrl-l timeline  ctrl-s search  ctrl-p plans  ctrl-a activity  ESC quit"
+	}
 
 	fzfCmd := exec.Command("fzf",
 		"--multi",
 		"--ansi",
 		"--no-sort",
 		"--layout=reverse",
+		"--header-first",
 		"--print-query",
 		"--expect", "enter,ctrl-o,ctrl-f,ctrl-t,ctrl-l,ctrl-p,ctrl-a,ctrl-s",
 		"--header", header,
@@ -456,11 +480,7 @@ func launchFzf() (action string, ids []string, query string, err error) {
 		"--preview", csmBin+" show {1}",
 		"--preview-window", "right:50%:wrap",
 		"--bind", fmt.Sprintf("ctrl-d:execute(%s rm --force {1})+reload(%s _fzf-lines)", csmBin, csmBin),
-		// execute-silent runs _toggle-group only when the line is a group header (grep fails silently
-		// for session lines). toggle then toggles selection (harmless for headers since they are
-		// filtered in output parsing). reload refreshes the list so collapse/expand is visible.
-		// This avoids the `transform` action which requires fzf 0.47.0+.
-		"--bind", fmt.Sprintf("space:execute-silent(echo {} | grep -q '[▼▶]' && %s _toggle-group {n})+toggle+reload(%s _fzf-lines)", csmBin, csmBin),
+		"--bind", spaceBinding,
 	)
 	fzfCmd.Stdin = strings.NewReader(input)
 	fzfCmd.Stderr = os.Stderr
