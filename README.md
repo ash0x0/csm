@@ -28,10 +28,24 @@ Fast CLI tool for managing [Claude Code](https://docs.anthropic.com/en/docs/clau
 curl -fsSL https://raw.githubusercontent.com/ash0x0/csm/main/install.sh | sh
 ```
 
-Or set a custom install directory:
+Install to a custom directory (e.g. if you don't have `/usr/local/bin` write access):
 
 ```bash
 CSM_INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/ash0x0/csm/main/install.sh | sh
+```
+
+### Update
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ash0x0/csm/main/install.sh | sh
+```
+
+Same command as install — skips if you're already on the latest version.
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ash0x0/csm/main/install.sh | sh -s -- uninstall
 ```
 
 ### Go install
@@ -54,7 +68,7 @@ make install
 
 ## Requirements
 
-- [fzf](https://github.com/junegunn/fzf) — required for the interactive TUI (`csm` with no args)
+- [fzf](https://github.com/junegunn/fzf) 0.30.0+ — required for the interactive TUI (`csm` with no args)
 
 ## Quick Start
 
