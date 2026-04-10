@@ -86,6 +86,30 @@ func runListDirs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// checkFzfVersion returns an error if fzf is older than 0.47.0,
+// which introduced the `transform` action used by the TUI.
+func checkFzfVersion() error {
+	out, err := exec.Command("fzf", "--version").Output()
+	if err != nil {
+		return nil // can't determine version, let fzf fail naturally
+	}
+	// output is like "0.47.0 (revision)"
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return nil
+	}
+	parts := strings.Split(fields[0], ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	major, _ := strconv.Atoi(parts[0])
+	minor, _ := strconv.Atoi(parts[1])
+	if major == 0 && minor < 47 {
+		return fmt.Errorf("fzf 0.47.0+ required (found %s) — upgrade with: nix profile install nixpkgs#fzf", fields[0])
+	}
+	return nil
+}
+
 func stateFilePath() string {
 	return fmt.Sprintf("%s/csm-collapse-%d", os.TempDir(), os.Getuid())
 }
@@ -328,6 +352,9 @@ func stripAnsi(s string) string {
 func runUI(cmd *cobra.Command, args []string) error {
 	if _, err := exec.LookPath("fzf"); err != nil {
 		return fmt.Errorf("fzf is required (install with: nix profile install nixpkgs#fzf)")
+	}
+	if err := checkFzfVersion(); err != nil {
+		return err
 	}
 
 	writeStateFile(make(map[string]bool))
