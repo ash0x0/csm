@@ -67,8 +67,12 @@ func runActivity(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	printHourDistribution(stats)
 	fmt.Println()
+	firstDate := stats.FirstSession
+	if len(firstDate) > 10 {
+		firstDate = firstDate[:10]
+	}
 	fmt.Printf("Total: %d sessions, %d messages since %s\n",
-		stats.TotalSessions, stats.TotalMessages, stats.FirstSession[:10])
+		stats.TotalSessions, stats.TotalMessages, firstDate)
 
 	return nil
 }

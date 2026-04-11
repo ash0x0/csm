@@ -115,8 +115,8 @@ func interactiveSelect() ([]string, error) {
 	var lines []string
 	for _, s := range sessions {
 		title := s.Title
-		if len(title) > 50 {
-			title = title[:47] + "..."
+		if titleRunes := []rune(title); len(titleRunes) > 50 {
+			title = string(titleRunes[:47]) + "..."
 		}
 		branch := s.Branch
 		if branch == "HEAD" {

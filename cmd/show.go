@@ -54,8 +54,8 @@ func runShow(cmd *cobra.Command, args []string) error {
 			if meta.Project != "" {
 				path = strings.TrimPrefix(path, meta.Project+"/")
 			}
-			if len(path) > 60 {
-				path = "..." + path[len(path)-57:]
+			if pathRunes := []rune(path); len(pathRunes) > 60 {
+				path = "..." + string(pathRunes[len(pathRunes)-57:])
 			}
 			fmt.Printf("  v%-3d %-60s  %s\n", f.Versions, path, formatModTime(f.LastBackup))
 		}

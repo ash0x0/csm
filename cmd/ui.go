@@ -279,15 +279,15 @@ func buildFzfLines(collapsedSet map[string]bool) []string {
 
 func formatSessionLine(s session.SessionMeta) string {
 	title := s.Title
-	if len(title) > 45 {
-		title = title[:42] + "..."
+	if titleRunes := []rune(title); len(titleRunes) > 45 {
+		title = string(titleRunes[:42]) + "..."
 	}
 	branch := s.Branch
 	if branch == "HEAD" {
 		branch = ""
 	}
-	if len(branch) > 18 {
-		branch = branch[:15] + "..."
+	if branchRunes := []rune(branch); len(branchRunes) > 18 {
+		branch = string(branchRunes[:15]) + "..."
 	}
 	active := ""
 	if s.IsActive {

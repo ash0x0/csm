@@ -24,12 +24,12 @@ func PrintTable(sessions []session.SessionMeta) {
 		fmt.Printf("\n▼ %s (%d)\n", g.project, len(g.sessions))
 		for _, s := range g.sessions {
 			title := s.Title
-			if len(title) > 45 {
-				title = title[:42] + "..."
+			if titleRunes := []rune(title); len(titleRunes) > 45 {
+				title = string(titleRunes[:42]) + "..."
 			}
 			branch := normalizeBranch(s.Branch)
-			if len(branch) > 18 {
-				branch = branch[:15] + "..."
+			if branchRunes := []rune(branch); len(branchRunes) > 18 {
+				branch = string(branchRunes[:15]) + "..."
 			}
 
 			marker := " "
@@ -86,8 +86,8 @@ func groupByProject(sessions []session.SessionMeta) []projectGroup {
 func PrintFzf(sessions []session.SessionMeta) {
 	for _, s := range sessions {
 		title := s.Title
-		if len(title) > 60 {
-			title = title[:57] + "..."
+		if titleRunes := []rune(title); len(titleRunes) > 60 {
+			title = string(titleRunes[:57]) + "..."
 		}
 		marker := ""
 		if s.IsActive {
@@ -243,8 +243,9 @@ func formatSize(bytes int64) string {
 }
 
 func truncateStr(s string, max int) string {
-	if len(s) > max {
-		return s[:max-3] + "..."
+	runes := []rune(s)
+	if len(runes) > max {
+		return string(runes[:max-3]) + "..."
 	}
 	return s
 }

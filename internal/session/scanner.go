@@ -341,11 +341,29 @@ func extractCustomTitle(line []byte) string {
 	}
 	start := idx + len(`"customTitle":"`)
 	end := start
-	for end < len(line) && line[end] != '"' {
+	for end < len(line) {
+		if line[end] == '\\' {
+			end += 2 // skip escaped character
+			continue
+		}
+		if line[end] == '"' {
+			break
+		}
 		end++
 	}
-	if end > start && end < len(line) {
-		return string(line[start:end])
+	if end > start && end <= len(line) {
+		raw := line[start:end]
+		// Unescape JSON string escapes (e.g. \" -> ")
+		var unescaped []byte
+		for i := 0; i < len(raw); i++ {
+			if raw[i] == '\\' && i+1 < len(raw) {
+				unescaped = append(unescaped, raw[i+1])
+				i++
+			} else {
+				unescaped = append(unescaped, raw[i])
+			}
+		}
+		return string(unescaped)
 	}
 	return ""
 }
@@ -363,6 +381,34 @@ func extractTimestamp(line []byte) string {
 	}
 	if end > start && end < len(line) {
 		return string(line[start:end])
+	}
+	return ""
+}
+
+// extractSearchText extracts the full text content from a user message for search.
+// Handles both string content and array-of-blocks content formats.
+func extractSearchText(msg map[string]any) string {
+	content, ok := msg["content"]
+	if !ok {
+		return ""
+	}
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, b := range c {
+			bm, ok := b.(map[string]any)
+			if !ok {
+				continue
+			}
+			if bm["type"] == "text" {
+				if text, ok := bm["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, " ")
 	}
 	return ""
 }
@@ -396,8 +442,9 @@ func decodeProjectPath(encoded string) string {
 func truncate(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.TrimSpace(s)
-	if len(s) > maxLen {
-		return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen-3]) + "..."
 	}
 	return s
 }
@@ -437,14 +484,22 @@ func ReadRawEventsWithStats(filePath string) (events []map[string]any, skipped i
 	}
 	defer f.Close()
 
-	dec := json.NewDecoder(f)
-	for dec.More() {
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 2*1024*1024), 2*1024*1024)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
 		var ev map[string]any
-		if decErr := dec.Decode(&ev); decErr != nil {
+		if json.Unmarshal(line, &ev) != nil {
 			skipped++
 			continue
 		}
 		events = append(events, ev)
+	}
+	if sc.Err() != nil {
+		return events, skipped, sc.Err()
 	}
 	return events, skipped, nil
 }
@@ -819,8 +874,8 @@ func ReadTimeline(filePath string) ([]TimelineEvent, error) {
 			if isSystemInjected(summary) {
 				continue
 			}
-			if len(summary) > 80 {
-				summary = summary[:77] + "..."
+			if summaryRunes := []rune(summary); len(summaryRunes) > 80 {
+				summary = string(summaryRunes[:77]) + "..."
 			}
 			events = append(events, TimelineEvent{Time: t, Type: "user", Summary: summary})
 
@@ -862,8 +917,8 @@ func ReadTimeline(filePath string) ([]TimelineEvent, error) {
 
 		case "queue-operation":
 			content, _ := ev["content"].(string)
-			if len(content) > 60 {
-				content = content[:57] + "..."
+			if contentRunes := []rune(content); len(contentRunes) > 60 {
+				content = string(contentRunes[:57]) + "..."
 			}
 			events = append(events, TimelineEvent{Time: t, Type: "queue", Summary: content})
 		}
@@ -900,8 +955,8 @@ func SearchSession(filePath, query string, deep bool) ([]SearchHit, error) {
 			lp, _ := ev["lastPrompt"].(string)
 			if lp != "" && strings.Contains(strings.ToLower(lp), lowerQuery) {
 				ctx := lp
-				if len(ctx) > 120 {
-					ctx = ctx[:117] + "..."
+				if ctxRunes := []rune(ctx); len(ctxRunes) > 120 {
+					ctx = string(ctxRunes[:117]) + "..."
 				}
 				hits = append(hits, SearchHit{Context: ctx, Type: "last-prompt"})
 				lastPromptFound = true
@@ -916,14 +971,14 @@ func SearchSession(filePath, query string, deep bool) ([]SearchHit, error) {
 			if !ok {
 				continue
 			}
-			content, ok := msg["content"].(string)
-			if !ok {
+			text := extractSearchText(msg)
+			if text == "" {
 				continue
 			}
-			if strings.Contains(strings.ToLower(content), lowerQuery) {
-				ctx := content
-				if len(ctx) > 120 {
-					ctx = ctx[:117] + "..."
+			if strings.Contains(strings.ToLower(text), lowerQuery) {
+				ctx := text
+				if ctxRunes := []rune(ctx); len(ctxRunes) > 120 {
+					ctx = string(ctxRunes[:117]) + "..."
 				}
 				hits = append(hits, SearchHit{Context: ctx, Type: "user-prompt"})
 			}

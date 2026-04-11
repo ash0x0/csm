@@ -106,8 +106,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 }
 
 func truncStr(s string, max int) string {
-	if len(s) <= max {
+	runes := []rune(s)
+	if len(runes) <= max {
 		return s
 	}
-	return s[:max-3] + "..."
+	return string(runes[:max-3]) + "..."
 }

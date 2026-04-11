@@ -115,8 +115,8 @@ func listPlans(plansDir string) error {
 			title = "-"
 		}
 		project := p.Project
-		if len(project) > 28 {
-			project = "..." + project[len(project)-25:]
+		if projRunes := []rune(project); len(projRunes) > 28 {
+			project = "..." + string(projRunes[len(projRunes)-25:])
 		}
 		mod := ""
 		if t, err := time.Parse(time.RFC3339, p.Modified); err == nil {

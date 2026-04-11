@@ -51,8 +51,8 @@ func runTasks(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s %2s. %s\n", icon, t.ID, t.Subject)
 		if t.Description != "" && t.Description != t.Subject {
 			desc := t.Description
-			if len(desc) > 80 {
-				desc = desc[:77] + "..."
+			if descRunes := []rune(desc); len(descRunes) > 80 {
+				desc = string(descRunes[:77]) + "..."
 			}
 			fmt.Printf("       %s\n", desc)
 		}

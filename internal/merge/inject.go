@@ -169,8 +169,9 @@ func validateNoDuplicates(metas []*session.SessionMeta) error {
 }
 
 func truncTitle(s string) string {
-	if len(s) > 30 {
-		return s[:27] + "..."
+	runes := []rune(s)
+	if len(runes) > 30 {
+		return string(runes[:27]) + "..."
 	}
 	return s
 }
