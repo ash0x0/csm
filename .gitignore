@@ -27,3 +27,6 @@ Thumbs.db
 # Test
 coverage.out
 coverage.html
+
+# Worktrees
+.worktrees/
