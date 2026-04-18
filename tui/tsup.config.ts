@@ -5,6 +5,7 @@ export default defineConfig({
   format: ['esm'],
   outDir: 'dist',
   bundle: true,
+  splitting: false,
   minify: false,
   sourcemap: false,
   target: 'node20',
@@ -14,6 +15,6 @@ export default defineConfig({
     js: '#!/usr/bin/env node\nimport{createRequire}from"module";const require=createRequire(import.meta.url);',
   },
   esbuildOptions(options) {
-    options.external = [...(options.external ?? []), 'react-devtools-core'];
+    options.alias = { ...options.alias, 'react-devtools-core': './src/devtools-stub.ts' };
   },
 });

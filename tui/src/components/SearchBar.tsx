@@ -13,8 +13,8 @@ interface Props {
 
 export function SearchBar({ value, isActive, onChange, onCancel, totalCount }: Props) {
   return (
-    <Box borderStyle="single" paddingX={1}>
-      <Text dimColor>/ </Text>
+    <Box borderStyle="single" borderColor="cyan" paddingX={1}>
+      <Text color="cyan">/ </Text>
       {isActive ? (
         <TextInput
           placeholder="Search sessions..."
@@ -23,10 +23,10 @@ export function SearchBar({ value, isActive, onChange, onCancel, totalCount }: P
           onSubmit={onCancel}
         />
       ) : (
-        <Text>{value || <Text dimColor>Search sessions... (press / to search)</Text>}</Text>
+        <Text>{value || <Text color="gray">Search sessions... (press / to search)</Text>}</Text>
       )}
       <Box flexGrow={1} />
-      <Text dimColor> {totalCount} sessions</Text>
+      <Text color="yellow" bold> {totalCount} sessions</Text>
     </Box>
   );
 }

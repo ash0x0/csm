@@ -9,42 +9,47 @@ interface Props {
 export function HelpBar({ multiSelectCount, showHelp }: Props) {
   if (showHelp) {
     return (
-      <Box flexDirection="column" borderStyle="single" paddingX={1}>
+      <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
         <Text bold>Keybindings</Text>
         <Box gap={4}>
           <Box flexDirection="column">
-            <Text><Text color="yellow">↑↓</Text>  navigate</Text>
-            <Text><Text color="yellow">space</Text>  select (multi)</Text>
-            <Text><Text color="yellow">/</Text>    search</Text>
-            <Text><Text color="yellow">enter</Text> open/merge</Text>
-            <Text><Text color="yellow">esc</Text>  back/quit</Text>
+            <Text><Text color="cyan" bold>↑↓</Text>  navigate</Text>
+            <Text><Text color="cyan" bold>space</Text>  select / collapse</Text>
+            <Text><Text color="cyan" bold>/</Text>    search</Text>
+            <Text><Text color="cyan" bold>enter</Text> open/merge/collapse</Text>
+            <Text><Text color="cyan" bold>esc</Text>  back/quit</Text>
           </Box>
           <Box flexDirection="column">
-            <Text><Text color="yellow">d</Text>  delete</Text>
-            <Text><Text color="yellow">o</Text>  move</Text>
-            <Text><Text color="yellow">b</Text>  clone</Text>
-            <Text><Text color="yellow">f</Text>  diff</Text>
-            <Text><Text color="yellow">t</Text>  tasks</Text>
+            <Text><Text color="cyan" bold>d</Text>  delete</Text>
+            <Text><Text color="cyan" bold>o</Text>  move</Text>
+            <Text><Text color="cyan" bold>b</Text>  clone</Text>
+            <Text><Text color="cyan" bold>f</Text>  diff</Text>
+            <Text><Text color="cyan" bold>t</Text>  tasks</Text>
           </Box>
           <Box flexDirection="column">
-            <Text><Text color="yellow">l</Text>  timeline</Text>
-            <Text><Text color="yellow">p</Text>  plans</Text>
-            <Text><Text color="yellow">a</Text>  activity</Text>
-            <Text><Text color="yellow">?</Text>  toggle help</Text>
-            <Text><Text color="yellow">q</Text>  quit</Text>
+            <Text><Text color="cyan" bold>l</Text>  timeline</Text>
+            <Text><Text color="cyan" bold>p</Text>  plans</Text>
+            <Text><Text color="cyan" bold>a</Text>  activity</Text>
+            <Text><Text color="cyan" bold>?</Text>  toggle help</Text>
+            <Text><Text color="cyan" bold>q</Text>  quit</Text>
           </Box>
         </Box>
       </Box>
     );
   }
 
-  const hint = multiSelectCount > 0
-    ? `${multiSelectCount} selected — enter:merge  f:diff  esc:clear`
-    : '↑↓ nav  space select  enter open  d del  o move  b clone  / search  ? help  q quit';
+  if (multiSelectCount > 0) {
+    return (
+      <Box paddingX={1}>
+        <Text color="magenta" bold>{multiSelectCount} selected</Text>
+        <Text> — enter:merge  f:diff  esc:clear</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box paddingX={1}>
-      <Text dimColor>{hint}</Text>
+      <Text>↑↓ nav  space select  enter open  d del  o move  b clone  / search  ? help  q quit</Text>
     </Box>
   );
 }

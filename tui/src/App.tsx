@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import { Spinner } from '@inkjs/ui';
-import { SessionList } from './components/SessionList.js';
+import { SessionList, buildRows } from './components/SessionList.js';
 import { PreviewPanel } from './components/PreviewPanel.js';
 import { SearchBar } from './components/SearchBar.js';
 import { HelpBar } from './components/HelpBar.js';
@@ -42,9 +42,14 @@ export function AppWithInput() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showHelp, setShowHelp] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const { sessions, loading, error, refresh } = useSessions(searchQuery);
-  const currentSession = sessions[cursor] ?? null;
+
+  const rows = useMemo(() => buildRows(sessions, collapsedGroups), [sessions, collapsedGroups]);
+  const currentRow = rows[cursor] ?? null;
+  const currentSession = currentRow?.type === 'session' ? currentRow.session : null;
+
   const { events: previewEvents, loading: previewLoading, error: previewError } = usePreview(
     screen.type === 'main' ? currentSession : null
   );
@@ -58,6 +63,14 @@ export function AppWithInput() {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleCollapse = useCallback((project: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(project)) next.delete(project); else next.add(project);
       return next;
     });
   }, []);
@@ -85,14 +98,22 @@ export function AppWithInput() {
     if (input === '?') { setShowHelp(h => !h); return; }
 
     if (key.upArrow) { setCursor(c => Math.max(0, c - 1)); return; }
-    if (key.downArrow) { setCursor(c => Math.min(sessions.length - 1, c + 1)); return; }
+    if (key.downArrow) { setCursor(c => Math.min(rows.length - 1, c + 1)); return; }
 
     if (input === ' ') {
-      if (currentSession) toggleSelect(currentSession.short_id);
+      if (currentRow?.type === 'header') {
+        toggleCollapse(currentRow.project);
+      } else if (currentSession) {
+        toggleSelect(currentSession.short_id);
+      }
       return;
     }
 
     if (key.return) {
+      if (currentRow?.type === 'header') {
+        toggleCollapse(currentRow.project);
+        return;
+      }
       const selected = sessions.filter(s => selectedIds.has(s.short_id));
       if (selected.length >= 2) {
         const ids = selected.map(s => s.short_id);
@@ -247,6 +268,8 @@ export function AppWithInput() {
           {!loading && !error && (
             <SessionList
               sessions={sessions}
+              collapsedGroups={collapsedGroups}
+              onToggleCollapse={toggleCollapse}
               selectedIndex={cursor}
               selectedIds={selectedIds}
               onIndexChange={setCursor}
@@ -257,7 +280,7 @@ export function AppWithInput() {
         </Box>
         <Box width={1} flexDirection="column">
           {Array.from({ length: listHeight }, (_, i) => (
-            <Text key={i} dimColor>│</Text>
+            <Text key={i} color="blue">│</Text>
           ))}
         </Box>
         <Box width={previewWidth} overflow="hidden">
