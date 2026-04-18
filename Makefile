@@ -11,7 +11,7 @@ build-tui:
 build: build-tui
 	go build $(LDFLAGS) -o csm .
 
-test:
+test: build-tui
 	cd tui && npm test
 	go test -race -cover ./...
 
