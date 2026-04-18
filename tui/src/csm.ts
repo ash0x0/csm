@@ -81,6 +81,38 @@ export async function mergeSession(ids: string[]): Promise<MergeResult> {
   };
 }
 
+export interface DryRunResult {
+  strategy: string;
+  sharedCount: number;
+  branchAOnly: number;
+  branchBOnly: number;
+  totalEvents: number;
+  warnings: string[];
+}
+
+export async function dryRunMerge(ids: string[]): Promise<DryRunResult> {
+  const fullArgs = claudeDir
+    ? ['--claude-dir', claudeDir, 'merge', '--dry-run', ...ids]
+    : ['merge', '--dry-run', ...ids];
+  const result = await execa(csmBin, fullArgs, { reject: true, all: true });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+
+  const strategy = stdout.match(/^Strategy:\s+(.+)$/m)?.[1]?.trim() ?? '';
+  const sharedCount = parseInt(stdout.match(/^Shared events:\s+(\d+)$/m)?.[1] ?? '0', 10);
+  const branchAOnly = parseInt(stdout.match(/^Session A unique:\s+(\d+)$/m)?.[1] ?? '0', 10);
+  const branchBOnly = parseInt(stdout.match(/^Session B unique:\s+(\d+)$/m)?.[1] ?? '0', 10);
+  const totalEvents = parseInt(stdout.match(/^Total output events:\s+(\d+)$/m)?.[1] ?? '0', 10);
+
+  const warnings = stderr
+    .split('\n')
+    .filter(l => l.includes('compact') || l.toLowerCase().includes('warn'))
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  return { strategy, sharedCount, branchAOnly, branchBOnly, totalEvents, warnings };
+}
+
 export async function listProjects(): Promise<string[]> {
   const sessions = await listSessions();
   return [...new Set(sessions.map(s => s.project))].sort();

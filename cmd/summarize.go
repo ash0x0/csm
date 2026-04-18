@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ash0x0/csm/internal/summarize"
 	"github.com/spf13/cobra"
@@ -16,13 +17,15 @@ var summarizeCmd = &cobra.Command{
 }
 
 var (
-	summarizeModel string
-	summarizePrint bool
+	summarizeModel   string
+	summarizePrint   bool
+	summarizeTimeout time.Duration
 )
 
 func init() {
 	summarizeCmd.Flags().StringVar(&summarizeModel, "model", "haiku", "Claude model alias to use for summarization")
 	summarizeCmd.Flags().BoolVar(&summarizePrint, "print", false, "print summary to stdout without creating a new session")
+	summarizeCmd.Flags().DurationVar(&summarizeTimeout, "timeout", 0, "max time to wait for claude (default 5m)")
 	rootCmd.AddCommand(summarizeCmd)
 }
 
@@ -35,8 +38,9 @@ func runSummarize(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Summarizing session: %s (%s, %d msgs)\n", meta.ShortID, meta.Title, meta.Messages)
 
 	opts := summarize.Options{
-		Model: summarizeModel,
-		Print: summarizePrint,
+		Model:   summarizeModel,
+		Print:   summarizePrint,
+		Timeout: summarizeTimeout,
 	}
 
 	newID, err := summarize.Summarize(meta, opts)

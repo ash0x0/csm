@@ -29,7 +29,7 @@ func init() {
 	searchCmd.Flags().BoolVar(&searchDeep, "deep", false, "also search all user prompts (slower)")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "JSON output")
 	searchCmd.Flags().StringVarP(&searchProject, "project", "p", "", "filter by project path substring")
-	searchCmd.Flags().StringVar(&searchSince, "since", "", "only show sessions modified after this date (YYYY-MM-DD)")
+	searchCmd.Flags().StringVar(&searchSince, "since", "", "only show sessions modified within duration (e.g. 7d, 30d) or after date (YYYY-MM-DD)")
 	rootCmd.AddCommand(searchCmd)
 }
 
@@ -45,9 +45,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	var sinceTime time.Time
 	if searchSince != "" {
 		var err error
-		sinceTime, err = time.Parse("2006-01-02", searchSince)
+		sinceTime, err = parseSinceFlag(searchSince)
 		if err != nil {
-			return fmt.Errorf("invalid --since date %q: use YYYY-MM-DD format", searchSince)
+			return err
 		}
 	}
 

@@ -2,6 +2,7 @@ package summarize
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,10 +15,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const defaultTimeout = 5 * time.Minute
+
 // Options controls summarize behavior.
 type Options struct {
-	Model  string // claude model alias (default: "haiku")
-	Print  bool   // print summary to stdout instead of writing a session
+	Model   string        // claude model alias (default: "haiku")
+	Print   bool          // print summary to stdout instead of writing a session
+	Timeout time.Duration // max time to wait for claude (0 = defaultTimeout)
 }
 
 const defaultModel = "haiku"
@@ -43,8 +47,13 @@ func Summarize(meta *session.SessionMeta, opts Options) (string, error) {
 		return "", fmt.Errorf("session has no conversation events to summarize")
 	}
 
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+
 	transcript := buildTranscript(timeline)
-	summary, err := callClaude(transcript, opts.Model)
+	summary, err := callClaude(transcript, opts.Model, timeout)
 	if err != nil {
 		return "", fmt.Errorf("calling claude: %w", err)
 	}
@@ -82,10 +91,13 @@ func buildTranscript(events []session.TimelineEvent) string {
 }
 
 // callClaude runs `claude --print` with the transcript as stdin input.
-func callClaude(transcript, model string) (string, error) {
+func callClaude(transcript, model string, timeout time.Duration) (string, error) {
 	prompt := summarizePrompt + transcript
 
-	cmd := exec.Command("claude",
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "claude",
 		"--print",
 		"--model", model,
 		"--no-session-persistence",
@@ -95,6 +107,9 @@ func callClaude(transcript, model string) (string, error) {
 	cmd.Stdin = bytes.NewBufferString("")
 
 	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("claude timed out after %v — session may be too large", timeout)
+	}
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return "", fmt.Errorf("claude exited with %d: %s", exitErr.ExitCode(), string(exitErr.Stderr))

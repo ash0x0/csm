@@ -91,8 +91,8 @@ func runListDirs(cmd *cobra.Command, args []string) error {
 // which introduced the `transform` action used by the TUI.
 func checkFzfVersion() error {
 	major, minor := getFzfVersion()
-	if major == 0 && minor < 30 {
-		return fmt.Errorf("fzf 0.30.0+ required (found %d.%d) — upgrade with: nix profile install nixpkgs#fzf", major, minor)
+	if major == 0 && minor < 47 {
+		return fmt.Errorf("fzf ≥ 0.47.0 required (have %d.%d); install with: nix profile install nixpkgs#fzf", major, minor)
 	}
 	return nil
 }

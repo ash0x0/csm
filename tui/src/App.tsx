@@ -12,9 +12,10 @@ import { PlansView } from './components/PlansView.js';
 import { ActivityView } from './components/ActivityView.js';
 import { MoveView } from './components/MoveView.js';
 import { DiffView } from './components/DiffView.js';
+import { MergePreviewDialog } from './components/MergePreviewDialog.js';
 import { useSessions } from './hooks/useSessions.js';
 import { usePreview } from './hooks/usePreview.js';
-import { deleteSession, cloneSession, mergeSession, moveSession, type MergeResult } from './csm.js';
+import { deleteSession, cloneSession, mergeSession, dryRunMerge, moveSession, type MergeResult, type DryRunResult } from './csm.js';
 import type { SessionMeta } from './types.js';
 
 type Screen =
@@ -25,7 +26,8 @@ type Screen =
   | { type: 'activity' }
   | { type: 'confirm-delete'; session: SessionMeta }
   | { type: 'move'; session: SessionMeta }
-  | { type: 'diff'; sessionA: SessionMeta; sessionB: SessionMeta };
+  | { type: 'diff'; sessionA: SessionMeta; sessionB: SessionMeta }
+  | { type: 'merge-preview'; ids: string[]; preview: DryRunResult };
 
 export function AppWithInput() {
   const { exit } = useApp();
@@ -94,12 +96,9 @@ export function AppWithInput() {
       const selected = sessions.filter(s => selectedIds.has(s.short_id));
       if (selected.length >= 2) {
         const ids = selected.map(s => s.short_id);
-        mergeSession(ids).then((result: MergeResult) => {
-          refresh();
-          setSelectedIds(new Set());
-          const strategyInfo = result.strategy ? ` (${result.strategy}, ${result.totalEvents} events)` : '';
-          showStatus(`Merged → ${result.newId.slice(0, 8)}${strategyInfo}`);
-        }).catch(e => showStatus(`Merge failed: ${e}`));
+        dryRunMerge(ids).then(preview => {
+          setScreen({ type: 'merge-preview', ids, preview });
+        }).catch(e => showStatus(`Merge preview failed: ${e}`));
       }
       return;
     }
@@ -205,6 +204,28 @@ export function AppWithInput() {
         sessionA={screen.sessionA}
         sessionB={screen.sessionB}
         onBack={() => setScreen({ type: 'main' })}
+      />
+    );
+  }
+  if (screen.type === 'merge-preview') {
+    const { ids, preview } = screen;
+    return (
+      <MergePreviewDialog
+        ids={ids}
+        preview={preview}
+        onConfirm={() => {
+          mergeSession(ids).then((result: MergeResult) => {
+            refresh();
+            setSelectedIds(new Set());
+            setScreen({ type: 'main' });
+            const strategyInfo = result.strategy ? ` (${result.strategy}, ${result.totalEvents} events)` : '';
+            showStatus(`Merged → ${result.newId.slice(0, 8)}${strategyInfo}`);
+          }).catch(e => {
+            setScreen({ type: 'main' });
+            showStatus(`Merge failed: ${e}`);
+          });
+        }}
+        onCancel={() => setScreen({ type: 'main' })}
       />
     );
   }
