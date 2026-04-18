@@ -64,10 +64,21 @@ export async function cloneSession(id: string): Promise<string> {
   return match?.[1] ?? '';
 }
 
-export async function mergeSession(ids: string[]): Promise<string> {
+export interface MergeResult {
+  newId: string;
+  strategy: string;
+  totalEvents: number;
+}
+
+export async function mergeSession(ids: string[]): Promise<MergeResult> {
   const out = await run(['merge', ...ids]);
-  const match = out.match(/Created merged session: (\S+)/);
-  return match?.[1] ?? '';
+  const idMatch = out.match(/Created merged session: (\S+)/);
+  const statsMatch = out.match(/Strategy: (\S+) \| events: (\d+)/);
+  return {
+    newId: idMatch?.[1] ?? '',
+    strategy: statsMatch?.[1] ?? '',
+    totalEvents: statsMatch ? parseInt(statsMatch[2], 10) : 0,
+  };
 }
 
 export async function listProjects(): Promise<string[]> {

@@ -602,7 +602,7 @@ func doMerge(ids []string) error {
 
 	opts := merge.MergeOptions{}
 
-	newID, err := merge.MergeN(metas, opts)
+	newID, report, err := merge.MergeN(metas, opts)
 	if err != nil {
 		return fmt.Errorf("merge failed: %w", err)
 	}
@@ -612,6 +612,7 @@ func doMerge(ids []string) error {
 	}
 
 	fmt.Printf("Created merged session: %s\n", newID)
+	fmt.Printf("Strategy: %s | events: %d\n", report.Strategy, report.TotalEvents)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])
 	return nil
 }

@@ -286,23 +286,29 @@ func merge2Events(eventsA, eventsB []map[string]any) ([]map[string]any, mergeSta
 	// The shared block from A (identical to the corresponding block in B)
 	sharedBlock := uuidA[a.OffsetA : a.OffsetA+a.Length]
 
-	// Collect unique events from both sessions (before and after the shared block)
-	var divergent []map[string]any
-	divergent = append(divergent, uuidA[:a.OffsetA]...)                // A before shared
-	divergent = append(divergent, uuidA[a.OffsetA+a.Length:]...)       // A after shared
-	divergent = append(divergent, uuidB[:a.OffsetB]...)                // B before shared
-	divergent = append(divergent, uuidB[a.OffsetB+a.Length:]...)       // B after shared
+	// Events that logically precede the shared block (from both sessions)
+	var preDivergent []map[string]any
+	preDivergent = append(preDivergent, uuidA[:a.OffsetA]...)
+	preDivergent = append(preDivergent, uuidB[:a.OffsetB]...)
+	sort.SliceStable(preDivergent, func(i, j int) bool {
+		return parseTimestamp(preDivergent[i]).Before(parseTimestamp(preDivergent[j]))
+	})
 
-	sort.SliceStable(divergent, func(i, j int) bool {
-		return parseTimestamp(divergent[i]).Before(parseTimestamp(divergent[j]))
+	// Events that logically follow the shared block (from both sessions)
+	var postDivergent []map[string]any
+	postDivergent = append(postDivergent, uuidA[a.OffsetA+a.Length:]...)
+	postDivergent = append(postDivergent, uuidB[a.OffsetB+a.Length:]...)
+	sort.SliceStable(postDivergent, func(i, j int) bool {
+		return parseTimestamp(postDivergent[i]).Before(parseTimestamp(postDivergent[j]))
 	})
 
 	dedupMeta := deduplicateMetadata(metaA, metaB)
 
-	result := make([]map[string]any, 0, len(dedupMeta)+len(sharedBlock)+len(divergent))
+	result := make([]map[string]any, 0, len(dedupMeta)+len(preDivergent)+len(sharedBlock)+len(postDivergent))
 	result = append(result, dedupMeta...)
+	result = append(result, preDivergent...)
 	result = append(result, sharedBlock...)
-	result = append(result, divergent...)
+	result = append(result, postDivergent...)
 
 	// Rechain ALL uuid events linearly so Claude Code can walk the
 	// entire conversation from last event to first.

@@ -49,7 +49,7 @@ func TestMergeNChainSessions(t *testing.T) {
 	m2 := buildMeta(t, projDir, "Session B", base.Add(1*time.Hour), 1)
 	m3 := buildMeta(t, projDir, "Session C", base.Add(2*time.Hour), 1)
 
-	newID, err := MergeN([]*session.SessionMeta{m1, m2, m3}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2, m3}, MergeOptions{
 		Title:     "Chained",
 		OutputDir: projDir,
 	})
@@ -101,7 +101,7 @@ func TestMergeNRewritesSessionId(t *testing.T) {
 	m1 := buildMeta(t, projDir, "Session A", base, 1)
 	m2 := buildMeta(t, projDir, "Session B", base.Add(1*time.Hour), 1)
 
-	newID, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
 		Title:     "Merged",
 		OutputDir: projDir,
 	})
@@ -147,7 +147,7 @@ func TestMergeNPreservesSnapshotNoSessionId(t *testing.T) {
 	base2 := time.Date(2026, 3, 20, 11, 0, 0, 0, time.UTC)
 	meta2 := buildMeta(t, projDir, "Plain", base2, 1)
 
-	newID, err := MergeN([]*session.SessionMeta{meta1, meta2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{meta1, meta2}, MergeOptions{
 		Title:     "Snapshot Test",
 		OutputDir: projDir,
 	})
@@ -180,7 +180,7 @@ func TestMergeNChronologicalOrder(t *testing.T) {
 	mLater := buildMeta(t, projDir, "Later Session", later, 1)
 	mEarlier := buildMeta(t, projDir, "Earlier Session", earlier, 1)
 
-	newID, err := MergeN([]*session.SessionMeta{mLater, mEarlier}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{mLater, mEarlier}, MergeOptions{
 		Title:     "Chrono Test",
 		OutputDir: projDir,
 	})
@@ -246,7 +246,7 @@ func TestMergeNPreservesAllFields(t *testing.T) {
 	// Need a second session for merge
 	meta2 := buildMeta(t, projDir, "Second", time.Date(2026, 3, 20, 11, 0, 0, 0, time.UTC), 1)
 
-	newID, err := MergeN([]*session.SessionMeta{meta, meta2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{meta, meta2}, MergeOptions{
 		Title:     "Fields Test",
 		OutputDir: projDir,
 	})
@@ -283,7 +283,7 @@ func TestMergeNAutoTitle(t *testing.T) {
 	m2 := buildMeta(t, projDir, "Beta", base.Add(1*time.Hour), 1)
 
 	// No title provided — should auto-generate
-	newID, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
 		OutputDir: projDir,
 	})
 	if err != nil {
@@ -316,7 +316,7 @@ func TestMergeNCustomTitle(t *testing.T) {
 	m2 := buildMeta(t, projDir, "Beta", base.Add(1*time.Hour), 1)
 
 	customTitle := "My Custom Merge Title"
-	newID, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
 		Title:     customTitle,
 		OutputDir: projDir,
 	})
@@ -385,7 +385,7 @@ func TestMergeNSkipsIdenticalPair(t *testing.T) {
 	m3 := buildMeta(t, projDir, "Session B", base.Add(2*time.Hour), 1)
 
 	// Merging [m1, m2 (identical to m1), m3] should succeed, skipping m2
-	newID, err := MergeN([]*session.SessionMeta{m1, m2, m3}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2, m3}, MergeOptions{
 		OutputDir: projDir,
 	})
 	if err != nil {
@@ -398,7 +398,7 @@ func TestMergeNSkipsIdenticalPair(t *testing.T) {
 
 func TestMergeNLessThanTwo(t *testing.T) {
 	m1 := &session.SessionMeta{ID: "a"}
-	_, err := MergeN([]*session.SessionMeta{m1}, MergeOptions{})
+	_, _, err := MergeN([]*session.SessionMeta{m1}, MergeOptions{})
 	if err == nil {
 		t.Error("expected error when merging < 2 sessions")
 	}
@@ -412,7 +412,7 @@ func TestMergeNOutputFileCreated(t *testing.T) {
 	m1 := buildMeta(t, projDir, "A", base, 1)
 	m2 := buildMeta(t, projDir, "B", base.Add(1*time.Hour), 1)
 
-	newID, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
+	newID, _, err := MergeN([]*session.SessionMeta{m1, m2}, MergeOptions{
 		OutputDir: projDir,
 	})
 	if err != nil {

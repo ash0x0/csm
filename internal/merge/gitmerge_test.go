@@ -374,7 +374,7 @@ func TestMerge2SessionIdRewrite(t *testing.T) {
 	metaA := &session.SessionMeta{ID: idA, ShortID: idA[:8], Title: "A", FilePath: fpA, Modified: base}
 	metaB := &session.SessionMeta{ID: idB, ShortID: idB[:8], Title: "B", FilePath: fpB, Modified: base.Add(time.Hour)}
 
-	newID, err := MergeN([]*session.SessionMeta{metaA, metaB}, MergeOptions{OutputDir: projDir})
+	newID, _, err := MergeN([]*session.SessionMeta{metaA, metaB}, MergeOptions{OutputDir: projDir})
 	if err != nil {
 		t.Fatalf("MergeN: %v", err)
 	}
@@ -535,7 +535,7 @@ func TestMergeNThreeSessions(t *testing.T) {
 		{ID: idC, ShortID: idC[:8], Title: "C", FilePath: fpC, Modified: base.Add(2 * time.Hour)},
 	}
 
-	newID, err := MergeN(metas, MergeOptions{OutputDir: projDir, Title: "Three-way"})
+	newID, _, err := MergeN(metas, MergeOptions{OutputDir: projDir, Title: "Three-way"})
 	if err != nil {
 		t.Fatalf("MergeN: %v", err)
 	}

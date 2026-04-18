@@ -23,11 +23,13 @@ var mergeCmd = &cobra.Command{
 var (
 	mergeTitle   string
 	mergeProject string
+	mergeDryRun  bool
 )
 
 func init() {
 	mergeCmd.Flags().StringVarP(&mergeTitle, "title", "t", "", "title for merged session")
 	mergeCmd.Flags().StringVarP(&mergeProject, "project", "p", "", "project directory for output")
+	mergeCmd.Flags().BoolVar(&mergeDryRun, "dry-run", false, "preview merge without writing output file")
 	rootCmd.AddCommand(mergeCmd)
 }
 
@@ -70,16 +72,27 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	opts := merge.MergeOptions{
-		Title: mergeTitle,
+		Title:  mergeTitle,
+		DryRun: mergeDryRun,
 	}
 
 	if mergeProject != "" {
 		opts.OutputDir = mergeProject
 	}
 
-	newID, err := merge.MergeN(metas, opts)
+	newID, report, err := merge.MergeN(metas, opts)
 	if err != nil {
 		return fmt.Errorf("merge failed: %w", err)
+	}
+
+	if mergeDryRun {
+		fmt.Printf("Strategy:      %s\n", report.Strategy)
+		fmt.Printf("Shared events: %d\n", report.SharedCount)
+		fmt.Printf("Session A unique: %d\n", report.BranchAOnly)
+		fmt.Printf("Session B unique: %d\n", report.BranchBOnly)
+		fmt.Printf("Total output events: %d\n", report.TotalEvents)
+		fmt.Println("(dry-run: no file written)")
+		return nil
 	}
 
 	// Mark the output project dir dirty (defaults to first session's project)
@@ -90,6 +103,7 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	MarkDirty(outputDir)
 
 	fmt.Printf("Created merged session: %s\n", newID)
+	fmt.Printf("Strategy: %s | events: %d\n", report.Strategy, report.TotalEvents)
 	fmt.Printf("Resume with: claude --resume %s\n", newID[:8])
 	return nil
 }

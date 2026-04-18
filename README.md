@@ -98,6 +98,7 @@ csm reindex
 | `csm list` | List sessions grouped by project |
 | `csm show <id>` | Show session details, prompt history, files touched, and tasks |
 | `csm merge [ids...]` | Merge sessions (git-style dedup of shared history) |
+| `csm summarize <id>` | Compress a long session into a lean summary session |
 | `csm diff <a> <b>` | Compare two sessions (identical, superset, diverged, unrelated) |
 | `csm search <query>` | Search sessions by title or prompt content |
 | `csm timeline <id>` | Show chronological conversation timeline with token counts |
@@ -193,6 +194,27 @@ Claude Code stores sessions as JSONL files in `~/.claude/projects/`. Each file c
 | Flag | Description |
 |------|-------------|
 | `--claude-dir` | Path to Claude Code data directory (default: `~/.claude`) |
+
+## Session Management
+
+### When to merge sessions
+- Parallel branches from a cloned session (different approaches to same problem)
+- Multiple short sessions on the same task you want to combine
+- Use `csm merge --dry-run` first to preview the merge strategy
+
+### When to summarize sessions
+- Session has been auto-compacted and context quality is degrading
+- You want a clean starting point with just the key decisions preserved
+- Before merging very long sessions (summarize each first)
+
+### When NOT to merge
+- Sessions on unrelated topics — the merged context confuses Claude
+- Merging a compacted session with a pre-compaction fork — CSM will warn you
+
+### Session length guidance
+- Under 30 turns: ideal size, full context available
+- 30–80 turns: auto-compact may trigger; quality degrades near limit
+- 80+ turns: strongly consider `csm summarize` before continuing
 
 ## Contributing
 

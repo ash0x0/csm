@@ -14,7 +14,7 @@ import { MoveView } from './components/MoveView.js';
 import { DiffView } from './components/DiffView.js';
 import { useSessions } from './hooks/useSessions.js';
 import { usePreview } from './hooks/usePreview.js';
-import { deleteSession, cloneSession, mergeSession, moveSession } from './csm.js';
+import { deleteSession, cloneSession, mergeSession, moveSession, type MergeResult } from './csm.js';
 import type { SessionMeta } from './types.js';
 
 type Screen =
@@ -94,10 +94,11 @@ export function AppWithInput() {
       const selected = sessions.filter(s => selectedIds.has(s.short_id));
       if (selected.length >= 2) {
         const ids = selected.map(s => s.short_id);
-        mergeSession(ids).then(newId => {
+        mergeSession(ids).then((result: MergeResult) => {
           refresh();
           setSelectedIds(new Set());
-          showStatus(`Merged → ${newId.slice(0, 8)}`);
+          const strategyInfo = result.strategy ? ` (${result.strategy}, ${result.totalEvents} events)` : '';
+          showStatus(`Merged → ${result.newId.slice(0, 8)}${strategyInfo}`);
         }).catch(e => showStatus(`Merge failed: ${e}`));
       }
       return;
