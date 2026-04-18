@@ -1,12 +1,18 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X github.com/ash0x0/csm/cmd.version=$(VERSION)"
 
-.PHONY: build test vet lint install clean
+.PHONY: build build-tui test vet lint install clean
 
-build:
+build-tui:
+	cd tui && npm install --frozen-lockfile && npm run build
+	mkdir -p internal/tuibundle/dist
+	cp tui/dist/index.js internal/tuibundle/dist/index.js
+
+build: build-tui
 	go build $(LDFLAGS) -o csm .
 
 test:
+	cd tui && npm test
 	go test -race -cover ./...
 
 vet:
@@ -20,7 +26,7 @@ install: build
 
 clean:
 	rm -f csm coverage.out
-	rm -rf dist/
+	rm -rf tui/dist tui/node_modules
 
 cover:
 	go test -race -coverprofile=coverage.out ./...

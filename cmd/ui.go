@@ -12,6 +12,7 @@ import (
 
 	"github.com/ash0x0/csm/internal/merge"
 	"github.com/ash0x0/csm/internal/session"
+	"github.com/ash0x0/csm/internal/tuibundle"
 	"github.com/spf13/cobra"
 )
 
@@ -357,6 +358,39 @@ func stripAnsi(s string) string {
 }
 
 func runUI(cmd *cobra.Command, args []string) error {
+	if _, err := exec.LookPath("node"); err != nil {
+		// Fallback to fzf TUI if node isn't available
+		return runFzfUI(cmd, args)
+	}
+
+	tmp, err := os.CreateTemp("", "csm-tui-*.mjs")
+	if err != nil {
+		return fmt.Errorf("extracting tui bundle: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.Write(tuibundle.Bundle); err != nil {
+		tmp.Close()
+		return fmt.Errorf("writing tui bundle: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing tui bundle: %w", err)
+	}
+
+	self, _ := os.Executable()
+
+	nodeCmd := exec.Command("node", tmp.Name(),
+		"--csm-bin", self,
+		"--claude-dir", claudeDir,
+	)
+	nodeCmd.Stdin = os.Stdin
+	nodeCmd.Stdout = os.Stdout
+	nodeCmd.Stderr = os.Stderr
+
+	return nodeCmd.Run()
+}
+
+func runFzfUI(cmd *cobra.Command, args []string) error {
 	if _, err := exec.LookPath("fzf"); err != nil {
 		return fmt.Errorf("fzf is required (install with: nix profile install nixpkgs#fzf)")
 	}
